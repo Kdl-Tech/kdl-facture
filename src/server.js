@@ -29,7 +29,7 @@ function demarrer(options = {}) {
     next();
   });
 
-  app.use('/api', creerApi(db));
+  app.use('/api', creerApi(db, { base: options.base || cheminParDefaut() }));
   app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h' }));
 
   const serveur = app.listen(PORT, HOTE, () => {

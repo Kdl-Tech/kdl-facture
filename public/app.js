@@ -46,7 +46,7 @@ function aller(vue) {
   const chargeurs = {
     brief: chargerBrief, documents: chargerDocuments, clients: chargerClients,
     articles: chargerArticles, entreprise: chargerEntreprise, journal: chargerJournal,
-    references: chargerReferences,
+    references: chargerReferences, edition: chargerEdition,
   };
   (chargeurs[vue] || (() => {}))();
 }
@@ -383,6 +383,57 @@ async function chargerEntreprise() {
   ].join('');
 }
 
+/* ─── Éditions ─── */
+async function chargerEdition() {
+  const e = await api('/edition');
+  const pro = e.edition === 'pro';
+  const bouton = $('#btn-edition');
+  if (bouton) bouton.textContent = `Édition ${e.nom}`;
+
+  $('#edition-etat').innerHTML = pro
+    ? `<div class="carte k-vert"><span class="badge b-vert">Pro</span>
+        <div class="corps"><div class="titre">Édition Pro active</div>
+        <div class="detail">Licence au nom de ${echapper(e.titulaire)}. Factures illimitées, catalogue, devis, export comptable et suivi du plafond.</div></div>
+        <div class="actions"><button class="bouton discret" id="btn-retirer-licence">Retirer la licence</button></div></div>`
+    : `<div class="carte k-ambre"><span class="badge b-ambre">Découverte</span>
+        <div class="corps"><div class="titre">Édition Découverte — ${e.factures_cette_annee} facture(s) sur ${e.plafond} cette année</div>
+        <div class="detail">${e.refus ? `${echapper(e.refus)} ` : ''}Vos factures sont pleinement conformes : Factur-X, journal inaltérable et avoirs sont inclus, sans filigrane ni limite de validité.</div></div></div>`;
+
+  const ligne = (ok, texte) => `<li class="${ok ? 'oui' : 'non'}">${echapper(texte)}</li>`;
+  $('#edition-offres').innerHTML = `
+    <div class="offres">
+      <div class="offre ${pro ? '' : 'actuelle'}">
+        <div class="offre-tete"><strong>Découverte</strong><span class="offre-prix">Gratuit</span></div>
+        <ul class="offre-liste">
+          ${ligne(true, 'Factures électroniques Factur-X, entièrement conformes')}
+          ${ligne(true, 'Journal inaltérable et avoirs')}
+          ${ligne(true, 'Tous les territoires et régimes de TVA')}
+          ${ligne(true, '15 factures par année civile')}
+          ${ligne(false, 'Catalogue de prestations, devis, acomptes')}
+          ${ligne(false, 'Export comptable et suivi du plafond')}
+        </ul>
+      </div>
+      <div class="offre ${pro ? 'actuelle' : 'phare'}">
+        <div class="offre-tete"><strong>Pro</strong><span class="offre-prix">49 € <small>une fois</small></span></div>
+        <ul class="offre-liste">
+          ${ligne(true, 'Tout ce que fait Découverte')}
+          ${ligne(true, 'Factures illimitées')}
+          ${ligne(true, 'Catalogue de prestations, devis, acomptes')}
+          ${ligne(true, 'Export comptable et suivi du plafond de franchise')}
+          ${ligne(true, 'Plusieurs entreprises dans la même base')}
+          ${ligne(true, 'Mises à jour de conformité incluses')}
+        </ul>
+        ${pro ? '' : `
+        <form id="form-licence" class="offre-form">
+          <div class="champ"><label>Votre courriel (titulaire de la licence)</label><input name="titulaire" type="email" required></div>
+          <div class="champ"><label>Clé de licence</label><input name="cle" placeholder="PRO-XXXXX-XXXXX-XXXXX-XXXXX" required></div>
+          <button class="bouton primaire" type="submit">Activer</button>
+        </form>`}
+      </div>
+    </div>
+    <p class="aide" style="margin-top:16px">Licence perpétuelle, sans abonnement : elle vaut pour cette machine et ne demande aucune connexion. Vos données vous appartiennent — elles restent dans un fichier que vous pouvez copier, sauvegarder et emporter.</p>`;
+}
+
 /* ─── Références officielles ───
    Un logiciel de facturation applique des règles qui ne lui appartiennent pas.
    Autant dire d'où elles viennent, et laisser vérifier. */
@@ -438,7 +489,7 @@ const REFERENCES = [
       },
       {
         titre: 'Espace auto-entrepreneur',
-        url: 'https://www.autoentrepreneur.urssaf.fr/',
+        url: 'https://www.autoentrepreneur.urssaf.fr/portail/accueil.html',
         source: 'URSSAF',
         note: 'Déclaration du chiffre d’affaires encaissé — le montant que suit le brief de ce logiciel.',
       },
@@ -451,13 +502,13 @@ const REFERENCES = [
     ],
   },
   {
-    theme: 'Trouver une plateforme agréée',
+    theme: 'Les plateformes agréées',
     liens: [
       {
-        titre: 'Annuaire des plateformes agréées',
-        url: 'https://www.impots.gouv.fr/liste-des-plateformes-agreees',
-        source: 'impots.gouv.fr',
-        note: "Ce logiciel produit le fichier conforme ; la transmission passe obligatoirement par l'une d'elles (article 289 bis du CGI).",
+        titre: 'Les plateformes de dématérialisation — fiche officielle',
+        url: 'https://www.impots.gouv.fr/sites/default/files/media/1_metier/2_professionnel/EV/2_gestion/290_facturation_electronique/fiches_reforme/fiche-pdp.pdf',
+        source: 'impots.gouv.fr — PDF',
+        note: "Leur rôle et comment en choisir une. Ce logiciel produit le fichier conforme ; la transmission passe obligatoirement par l'une d'elles (article 289 bis du CGI).",
       },
     ],
   },
@@ -824,6 +875,16 @@ document.addEventListener('click', async (ev) => {
 });
 
 document.addEventListener('submit', async (ev) => {
+  if (ev.target.id === 'form-licence') {
+    ev.preventDefault();
+    const corps = Object.fromEntries(new FormData(ev.target));
+    try {
+      await api('/edition/licence', { method: 'POST', body: corps });
+      noter('Édition Pro activée. Merci.', 'succes');
+      chargerEdition();
+    } catch (e) { noter(e.message, 'erreur'); }
+    return;
+  }
   if (ev.target.id === 'form-entreprise') {
     ev.preventDefault();
     const corps = Object.fromEntries(new FormData(ev.target));
@@ -864,6 +925,13 @@ document.addEventListener('click', async (ev) => {
     }
   }
   if (ev.target.id === 'btn-export') window.location = '/api/export/ventes.csv';
+  if (ev.target.id === 'btn-retirer-licence') {
+    try {
+      await api('/edition/licence', { method: 'DELETE' });
+      noter('Licence retirée : retour à l’édition Découverte.');
+      chargerEdition();
+    } catch (e) { noter(e.message, 'erreur'); }
+  }
 });
 
 /* ─── Formulaires client et article ─── */
@@ -933,3 +1001,7 @@ function formulaireArticle() {
 
 /* ─── Démarrage ─── */
 aller('brief');
+api('/edition').then((e) => {
+  const bouton = $('#btn-edition');
+  if (bouton) bouton.textContent = `Édition ${e.nom}`;
+}).catch(() => {});

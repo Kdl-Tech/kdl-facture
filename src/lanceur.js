@@ -73,7 +73,7 @@ function demarrer(options = {}) {
     next();
   });
 
-  app.use('/api', creerApi(db));
+  app.use('/api', creerApi(db, { base: options.base || cheminParDefaut() }));
   servirInterface(app);
 
   const serveur = app.listen(PORT, HOTE, () => {

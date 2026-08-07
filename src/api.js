@@ -12,9 +12,12 @@ const { genererPDF } = require('./pdf');
 const { genererXML, verifier } = require('./facturx');
 const { calculerDocument } = require('./calculs');
 const { TERRITOIRES, territoire, departement, devinerPrecis, tauxDisponibles } = require('./territoires');
+const { capacites, lireLicence, poserLicence, retirerLicence, PRO } = require('./edition');
 
-function creerApi(db) {
-  const service = new Service(db);
+function creerApi(db, options = {}) {
+  const cheminBase = options.base || '';
+  let licence = lireLicence(cheminBase);
+  const service = new Service(db, licence);
   const api = express.Router();
   api.use(express.json({ limit: '2mb' }));
 
@@ -143,6 +146,7 @@ function creerApi(db) {
   api.post('/articles', (req, res) => repondre(res, () => {
     const e = entrepriseCourante();
     if (!e) throw new ErreurMetier("Renseignez d'abord votre entreprise.");
+    exigerPro('catalogue', 'Le catalogue de prestations');
     const info = db.prepare(`
       INSERT INTO articles (entreprise_id, reference, designation, nature, unite, prix_ht, tva_taux)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -241,6 +245,43 @@ function creerApi(db) {
     };
   }));
 
+  // — Édition ——————————————————————————————————————————————
+  api.get('/edition', (req, res) => repondre(res, () => {
+    const e = entrepriseCourante();
+    const capa = capacites(licence);
+    return {
+      edition: licence.edition,
+      nom: capa.nom,
+      titulaire: licence.titulaire || '',
+      refus: licence.refus || '',
+      capacites: capa,
+      factures_cette_annee: e ? service.facturesEmisesCetteAnnee(e.id) : 0,
+      plafond: Number.isFinite(capa.factures_par_an) ? capa.factures_par_an : null,
+    };
+  }));
+
+  api.post('/edition/licence', (req, res) => repondre(res, () => {
+    const r = poserLicence(cheminBase, req.body.titulaire, req.body.cle);
+    if (!r.ok) throw new ErreurMetier(r.message);
+    licence = lireLicence(cheminBase);
+    service.licence = licence;
+    return { edition: licence.edition, titulaire: licence.titulaire };
+  }));
+
+  api.delete('/edition/licence', (req, res) => repondre(res, () => {
+    retirerLicence(cheminBase);
+    licence = lireLicence(cheminBase);
+    service.licence = licence;
+    return { edition: licence.edition };
+  }));
+
+  /** Refuse une route réservée, en expliquant plutôt qu'en se taisant. */
+  const exigerPro = (quoi, quoiDit) => {
+    if (!capacites(licence)[quoi]) {
+      throw new ErreurMetier(`${quoiDit} fait partie de l'édition Pro.`);
+    }
+  };
+
   // — Pilotage —————————————————————————————————————————————
   api.get('/tableau-de-bord', (req, res) => repondre(res, () => {
     const e = entrepriseCourante();
@@ -248,7 +289,8 @@ function creerApi(db) {
     return {
       entreprise: e,
       stats: service.statistiques(e.id),
-      franchise: service.suiviFranchise(e.id),
+      franchise: capacites(licence).suivi_plafond ? service.suiviFranchise(e.id) : null,
+      edition: { nom: capacites(licence).nom, code: licence.edition },
       territoire: territoire(e),
       impayes: service.impayes(e.id),
       brouillons: service.liste(e.id, { statut: 'brouillon' }),
@@ -264,6 +306,9 @@ function creerApi(db) {
   api.get('/export/ventes.csv', (req, res) => {
     const e = entrepriseCourante();
     if (!e) return res.status(400).end('Aucune entreprise.');
+    if (!capacites(licence).export_comptable) {
+      return res.status(422).json({ erreur: "L'export comptable fait partie de l'édition Pro." });
+    }
     const docs = service.liste(e.id).filter((d) => d.statut !== 'brouillon');
     const lignes = ['numero;type;date;client;siret;total_ht;total_tva;total_ttc;encaisse;statut'];
     for (const d of docs) {

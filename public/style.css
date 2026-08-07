@@ -348,3 +348,24 @@ h2 { font-size: 17px; margin: 0; }
 }
 .zone-liste ul { margin: 5px 0 0; padding-left: 18px; font-size: 13px; color: #b9c6d3; }
 .zone-liste li { margin-bottom: 3px; }
+
+/* ─── Éditions ─── */
+.offres { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 18px; }
+.offre {
+  background: var(--panneau); border: 1.5px solid var(--trait); border-radius: var(--r);
+  padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;
+}
+.offre.actuelle { border-color: var(--vert); }
+.offre.phare { border-color: var(--cyan); box-shadow: 0 0 40px rgba(56, 189, 248, .08); }
+.offre-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.offre-tete strong { font-size: 17px; }
+.offre-prix { font-size: 21px; font-weight: 700; color: var(--cyan); }
+.offre-prix small { font-size: 11.5px; color: var(--sourdine); font-weight: 400; }
+.offre-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.offre-liste li { font-size: 13.5px; padding-left: 22px; position: relative; }
+.offre-liste li::before { position: absolute; left: 0; font-weight: 700; }
+.offre-liste li.oui::before { content: '✓'; color: var(--vert); }
+.offre-liste li.non { color: var(--sourdine); }
+.offre-liste li.non::before { content: '·'; color: var(--sourdine); }
+.offre-form { display: flex; flex-direction: column; gap: 10px; margin-top: 4px;
+  padding-top: 14px; border-top: 1px solid var(--trait); }

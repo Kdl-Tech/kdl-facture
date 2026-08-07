@@ -25,6 +25,7 @@
   </nav>
   <div class="rail-pied">
     <button class="lien-discret" id="btn-export">Export comptable</button>
+    <button class="lien-discret" data-vue="edition" id="btn-edition">Édition —</button>
     <div class="version">v0.1 · local</div>
   </div>
 </aside>
@@ -98,6 +99,15 @@
     <p class="aide">Ces informations partent dans chaque facture, et dans le fichier XML que lira le logiciel de votre client. Une erreur ici se retrouve partout.</p>
     <div id="bandeau-regime"></div>
     <form id="form-entreprise" class="formulaire"></form>
+  </section>
+
+  <!-- ═══ ÉDITION ═══ -->
+  <section class="vue" id="vue-edition">
+    <header class="entete">
+      <div><div class="sur-titre">Licence</div><h1>Votre édition</h1></div>
+    </header>
+    <div id="edition-etat"></div>
+    <div id="edition-offres"></div>
   </section>
 
   <!-- ═══ RÉFÉRENCES ═══ -->

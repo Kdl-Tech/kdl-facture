@@ -16,6 +16,7 @@
 const crypto = require('node:crypto');
 const { calculerDocument, resteDu, calculerEcheance } = require('./calculs');
 const { verifier } = require('./facturx');
+const { capacites } = require('./edition');
 
 const PREFIXES = { facture: 'F', avoir: 'A', acompte: 'AC', devis: 'D' };
 
@@ -33,8 +34,25 @@ function empreinte(contenu) {
 }
 
 class Service {
-  constructor(db) {
+  constructor(db, licence = null) {
     this.db = db;
+    this.licence = licence;
+  }
+
+  /** Ce que l'édition en cours autorise. */
+  peut(quoi) {
+    return capacites(this.licence)[quoi];
+  }
+
+  /** Combien de factures ont déjà été émises cette année. */
+  facturesEmisesCetteAnnee(entrepriseId, annee) {
+    const an = annee || new Date().getFullYear();
+    return this.db.prepare(`
+      SELECT COUNT(*) AS n FROM documents
+      WHERE entreprise_id = ? AND statut != 'brouillon'
+        AND type IN ('facture', 'acompte')
+        AND substr(date_emission, 1, 4) = ?
+    `).get(entrepriseId, String(an)).n;
   }
 
   // — Lecture —————————————————————————————————————————————
@@ -187,6 +205,20 @@ class Service {
     if (!complet) throw new ErreurMetier("Document introuvable.");
     if (complet.document.statut !== 'brouillon') {
       throw new ErreurMetier(`Ce document est déjà émis sous le numéro ${complet.document.numero}.`);
+    }
+
+    // La limite de volume se vérifie ici, à l'émission, et pas à la saisie :
+    // on ne bloque jamais quelqu'un en plein travail, seulement au moment de
+    // rendre la facture définitive.
+    const plafond = this.peut('factures_par_an');
+    if (Number.isFinite(plafond) && complet.document.type !== 'avoir') {
+      const annee = Number(complet.document.date_emission.slice(0, 4));
+      const deja = this.facturesEmisesCetteAnnee(complet.document.entreprise_id, annee);
+      if (deja >= plafond) {
+        throw new ErreurMetier(
+          `L'édition Découverte permet ${plafond} factures par an, et ${deja} ont déjà été émises en ${annee}. `
+          + "L'édition Pro les rend illimitées — vos factures déjà émises restent intactes et lisibles.");
+      }
     }
 
     const controle = verifier(complet);
