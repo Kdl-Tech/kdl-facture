@@ -41,6 +41,12 @@ function graverRessources() {
     fichiers[`public/${nom}`] = fs.readFileSync(path.join(RACINE, 'public', nom)).toString('base64');
   }
   fichiers['logo-facture.png'] = fs.readFileSync(path.join(RACINE, 'src', 'logo-facture.png')).toString('base64');
+  // Les polices : sans elles, PDFKit cherche des fichiers de métriques qui
+  // n'existent pas dans un exécutable, et aucune facture ne sort.
+  for (const nom of fs.readdirSync(path.join(RACINE, 'src', 'polices'))) {
+    if (!nom.endsWith('.ttf') && !nom.endsWith('.icc')) continue;
+    fichiers[`polices/${nom}`] = fs.readFileSync(path.join(RACINE, 'src', 'polices', nom)).toString('base64');
+  }
 
   const module = `'use strict';\n\n`
     + `/* Fichier produit par build/construire.mjs — ne pas modifier à la main. */\n\n`

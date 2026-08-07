@@ -57,6 +57,19 @@ function montant(valeur) {
 }
 
 /**
+ * Le prix unitaire après remise.
+ *
+ * La norme veut que le montant de la ligne soit exactement le prix net
+ * multiplié par la quantité. Sans cette conversion, une ligne remisée
+ * annonçait 100 € de prix pour 80 € de total, et tout validateur la rejetait.
+ */
+function prixNet(ligne) {
+  const brut = Number(ligne.prix_ht) || 0;
+  const remise = Number(ligne.remise_pct) || 0;
+  return brut * (1 - remise / 100);
+}
+
+/**
  * Catégorie de TVA (UNTDID 5305) :
  *   S  — taux normal ou réduit
  *   E  — exonéré
@@ -132,8 +145,15 @@ function genererXML({ document, entreprise, client, lignes }) {
     <ram:IncludedSupplyChainTradeLineItem>
       <ram:AssociatedDocumentLineDocument><ram:LineID>${i + 1}</ram:LineID></ram:AssociatedDocumentLineDocument>
       <ram:SpecifiedTradeProduct>${bloc('ram:Name', l.designation)}</ram:SpecifiedTradeProduct>
-      <ram:SpecifiedLineTradeAgreement>
-        <ram:NetPriceProductTradePrice><ram:ChargeAmount>${montant(l.prix_ht)}</ram:ChargeAmount></ram:NetPriceProductTradePrice>
+      <ram:SpecifiedLineTradeAgreement>${Number(l.remise_pct || 0) > 0 ? `
+        <ram:GrossPriceProductTradePrice>
+          <ram:ChargeAmount>${montant(l.prix_ht)}</ram:ChargeAmount>
+          <ram:AppliedTradeAllowanceCharge>
+            <ram:ChargeIndicator><udt:Indicator>false</udt:Indicator></ram:ChargeIndicator>
+            <ram:ActualAmount>${montant(Number(l.prix_ht) * Number(l.remise_pct) / 100)}</ram:ActualAmount>
+          </ram:AppliedTradeAllowanceCharge>
+        </ram:GrossPriceProductTradePrice>` : ''}
+        <ram:NetPriceProductTradePrice><ram:ChargeAmount>${montant(prixNet(l))}</ram:ChargeAmount></ram:NetPriceProductTradePrice>
       </ram:SpecifiedLineTradeAgreement>
       <ram:SpecifiedLineTradeDelivery>
         <ram:BilledQuantity unitCode="${echapper(uniteCEFACT(l.unite))}">${Number(l.quantite).toFixed(4)}</ram:BilledQuantity>
@@ -245,6 +265,17 @@ function verifier({ document, entreprise, client, lignes }) {
   exiger(client.adresse && client.ville, "L'adresse du client est incomplète.");
   exiger((lignes || []).length > 0, "La facture ne contient aucune ligne.");
   exiger(document.date_emission, "La date d'émission est absente.");
+  // Une date au mauvais format traverse tout et ressort tronquée dans le XML :
+  // « 2026/08/06 » devient « 2026/08/ », et la facture est rejetée à l'arrivée.
+  // Comme elle est figée à l'émission, l'erreur ne se répare que par un avoir.
+  const DATE = /^\d{4}-\d{2}-\d{2}$/;
+  for (const champ of ['date_emission', 'date_echeance', 'date_livraison']) {
+    const valeur = document[champ];
+    if (valeur) {
+      exiger(DATE.test(valeur) && !Number.isNaN(Date.parse(valeur)),
+        `La ${champ.replace('date_', 'date d’').replace('_', ' ')} doit s'écrire AAAA-MM-JJ.`);
+    }
+  }
   exiger(['biens', 'services', 'mixte'].includes(document.categorie),
     "La catégorie d'opération doit être « biens », « services » ou « mixte ».");
 
@@ -268,6 +299,28 @@ function verifier({ document, entreprise, client, lignes }) {
         ? `Ligne ${i + 1} : sur un avoir, la quantité doit être négative.`
         : `Ligne ${i + 1} : la quantité doit être positive.`);
     exiger(Number(l.prix_ht) >= 0, `Ligne ${i + 1} : le prix ne peut pas être négatif.`);
+    const remise = Number(l.remise_pct || 0);
+    exiger(remise >= 0 && remise <= 100,
+      `Ligne ${i + 1} : la remise doit être comprise entre 0 et 100 %.`);
+  }
+
+  // Hors du régime normal, la facture ne peut porter aucune TVA : une catégorie
+  // « exonéré », « autoliquidation », « intracommunautaire » ou « exportation »
+  // accompagnée d'un taux non nul produit un XML contradictoire, rejeté par tout
+  // validateur, et un PDF qui affiche à la fois l'exonération et le montant.
+  const categorie = categorieTva(document, entreprise, client);
+  if (categorie !== 'S') {
+    const avecTaux = (lignes || []).filter((l) => Number(l.tva_taux) > 0);
+    exiger(avecTaux.length === 0,
+      `${motifExoneration(categorie, entreprise)} : aucune ligne ne peut porter de TVA.`);
+  } else {
+    // Une facture avec TVA doit porter le numéro de TVA du vendeur, et un
+    // virement doit indiquer où payer. Les deux sont exigés par la norme.
+    exiger(entreprise.tva_intra,
+      "Votre numéro de TVA intracommunautaire est obligatoire dès lors que vous facturez de la TVA.");
+    if (document.mode_paiement === 'virement') {
+      exiger(entreprise.iban, "Un paiement par virement exige votre IBAN sur la facture.");
+    }
   }
 
   if (entreprise.regime_tva === 'franchise') {

@@ -15,6 +15,76 @@
 const PDFDocument = require('pdfkit');
 const path = require('node:path');
 const fs = require('node:fs');
+
+/**
+ * Les polices voyagent avec le logiciel.
+ *
+ * PDFKit, laissé à lui-même, va chercher les métriques des polices standard
+ * (Helvetica et consorts) dans des fichiers `.afm` posés à côté de son code.
+ * Dans un exécutable autonome, ces fichiers n'existent pas : la génération de
+ * PDF échouait en production alors qu'elle passait en développement — le pire
+ * des défauts, invisible depuis la machine du développeur.
+ *
+ * On embarque donc deux polices TrueType et on interdit à PDFKit de charger
+ * quoi que ce soit d'autre (`font: null`). Aucun fichier externe, le même rendu
+ * sur les trois systèmes, et les accents français correctement dessinés.
+ */
+const POLICES = { corps: 'DejaVuSans.ttf', gras: 'DejaVuSans-Bold.ttf' };
+
+/**
+ * Le profil colorimétrique exigé par PDF/A-3.
+ *
+ * PDFKit le lit à un chemin fixe, à côté de son propre code. Dans un exécutable
+ * autonome, ce fichier n'existe pas et la génération échoue — exactement comme
+ * pour les métriques de polices. On le dépose donc là où PDFKit ira le chercher,
+ * une seule fois, au premier PDF.
+ */
+let profilInstalle = false;
+function installerProfilCouleur() {
+  if (profilInstalle) return;
+  profilInstalle = true;
+  const attendu = path.join(path.dirname(process.execPath), 'data', 'sRGB_IEC61966_2_1.icc');
+  try {
+    if (fs.existsSync(attendu)) return;
+    const source = path.join(__dirname, 'polices', 'sRGB_IEC61966_2_1.icc');
+    const contenu = fs.existsSync(source)
+      ? fs.readFileSync(source)
+      // eslint-disable-next-line global-require, import/no-unresolved
+      : require('./ressources-embarquees').lire('polices/sRGB_IEC61966_2_1.icc');
+    if (!contenu) return;
+    fs.mkdirSync(path.dirname(attendu), { recursive: true });
+    fs.writeFileSync(attendu, contenu);
+  } catch {
+    // Dossier en lecture seule : le PDF sortira sans marqueur PDF/A, ce qui
+    // vaut mieux que pas de facture du tout.
+  }
+}
+
+/** Le logo : celui de l'entreprise s'il en a un, sinon celui gravé dans le logiciel. */
+function lireLogo(chemin) {
+  if (chemin && fs.existsSync(chemin)) return fs.readFileSync(chemin);
+  const surDisque = path.join(__dirname, 'logo-facture.png');
+  if (fs.existsSync(surDisque)) return fs.readFileSync(surDisque);
+  try {
+    // eslint-disable-next-line global-require, import/no-unresolved
+    return require('./ressources-embarquees').lire('logo-facture.png');
+  } catch {
+    return null;
+  }
+}
+
+function lirePolice(fichier) {
+  // En développement, les polices sont sur le disque ; dans l'exécutable, elles
+  // sont gravées dans le binaire avec le reste de l'interface.
+  const surDisque = path.join(__dirname, 'polices', fichier);
+  if (fs.existsSync(surDisque)) return fs.readFileSync(surDisque);
+  try {
+    // eslint-disable-next-line global-require, import/no-unresolved
+    return require('./ressources-embarquees').lire(`polices/${fichier}`);
+  } catch {
+    return null;
+  }
+}
 const { calculerDocument, resteDu } = require('./calculs');
 const { genererXML, categorieTva, motifExoneration } = require('./facturx');
 
@@ -39,11 +109,13 @@ const LIBELLES = {
  */
 function genererPDF(donnees) {
   return new Promise((resolve, reject) => {
+    installerProfilCouleur();
     const { document, entreprise, client, lignes, paiements = [] } = donnees;
     const totaux = calculerDocument(lignes, { acompte: document.acompte });
     const doc = new PDFDocument({
       size: 'A4',
       margin: 42,
+      font: null,
       subset: 'PDF/A-3b',
       pdfVersion: '1.7',
       tagged: true,
@@ -56,6 +128,16 @@ function genererPDF(donnees) {
         Creator: 'KDL Facture',
       },
     });
+
+    for (const [nom, fichier] of Object.entries(POLICES)) {
+      const police = lirePolice(fichier);
+      if (!police) {
+        reject(new Error(`Police introuvable : ${fichier}. Le PDF ne peut pas être produit.`));
+        return;
+      }
+      doc.registerFont(nom, police);
+    }
+    doc.font('corps');
 
     const morceaux = [];
     doc.on('data', (c) => morceaux.push(c));
@@ -90,16 +172,16 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
   // Le logo de l'entreprise s'il en a un, sinon celui de KDL TECH : le
   // logiciel sert aussi les clients de Karim, et leur facture porte leur nom.
   let decalageTitre = G;
-  const logo = entreprise.logo_path || path.join(__dirname, 'logo-facture.png');
   try {
-    if (fs.existsSync(logo)) {
+    const logo = lireLogo(entreprise.logo_path);
+    if (logo) {
       doc.image(logo, G, 42, { fit: [40, 40] });
       decalageTitre = G + 50;
     }
   } catch { /* Un logo illisible ne doit pas empêcher de facturer. */ }
 
-  doc.fillColor(BLEU).font('Helvetica-Bold').fontSize(16).text(entreprise.nom, decalageTitre, 46);
-  doc.fillColor(GRIS).font('Helvetica').fontSize(8.5);
+  doc.fillColor(BLEU).font('gras').fontSize(16).text(entreprise.nom, decalageTitre, 46);
+  doc.fillColor(GRIS).font('corps').fontSize(8.5);
   const identite = [
     entreprise.forme_juridique,
     entreprise.adresse,
@@ -112,9 +194,9 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
   doc.text(identite.join('\n'), decalageTitre, 68, { width: largeur * 0.5 - 50, lineGap: 1.5 });
 
   const titre = LIBELLES[document.type] || 'FACTURE';
-  doc.fillColor(ENCRE).font('Helvetica-Bold').fontSize(22)
+  doc.fillColor(ENCRE).font('gras').fontSize(22)
     .text(titre, D - 220, 46, { width: 220, align: 'right' });
-  doc.font('Helvetica').fontSize(10).fillColor(BLEU)
+  doc.font('corps').fontSize(10).fillColor(BLEU)
     .text(`N° ${document.numero || '(brouillon)'}`, D - 220, 74, { width: 220, align: 'right' });
   doc.fillColor(GRIS).fontSize(8.5).text(
     [`Émise le ${jour(document.date_emission)}`,
@@ -128,11 +210,11 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
   y += 16;
 
   // — Destinataire —
-  doc.fillColor(GRIS).font('Helvetica-Bold').fontSize(7.5)
+  doc.fillColor(GRIS).font('gras').fontSize(7.5)
     .text('FACTURÉ À', D - 250, y, { width: 250, align: 'right', characterSpacing: 0.8 });
-  doc.fillColor(ENCRE).font('Helvetica-Bold').fontSize(10.5)
+  doc.fillColor(ENCRE).font('gras').fontSize(10.5)
     .text(client.nom, D - 250, y + 12, { width: 250, align: 'right' });
-  doc.font('Helvetica').fontSize(8.5).fillColor(GRIS);
+  doc.font('corps').fontSize(8.5).fillColor(GRIS);
   const dest = [
     client.contact,
     client.adresse,
@@ -145,15 +227,15 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
   doc.text(dest.join('\n'), D - 250, y + 27, { width: 250, align: 'right', lineGap: 1.5 });
 
   if (client.livraison_adresse) {
-    doc.fillColor(GRIS).font('Helvetica-Bold').fontSize(7.5)
+    doc.fillColor(GRIS).font('gras').fontSize(7.5)
       .text('LIVRÉ À', G, y, { characterSpacing: 0.8 });
-    doc.font('Helvetica').fontSize(8.5).text(
+    doc.font('corps').fontSize(8.5).text(
       [client.livraison_adresse, `${client.livraison_code_postal} ${client.livraison_ville}`.trim()]
         .filter(Boolean).join('\n'),
       G, y + 12, { width: 220, lineGap: 1.5 });
   }
   if (document.reference_commande) {
-    doc.fillColor(GRIS).font('Helvetica').fontSize(8.5)
+    doc.fillColor(GRIS).font('corps').fontSize(8.5)
       .text(`Référence commande : ${document.reference_commande}`, G, y + 56, { width: 240 });
   }
 
@@ -179,7 +261,7 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
 
   const enTete = (yy) => {
     doc.rect(G, yy, largeur, 17).fill(BLEU);
-    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(7.5);
+    doc.fillColor('#FFFFFF').font('gras').fontSize(7.5);
     for (const c of colonnes) {
       doc.text(c.titre, c.x + 4, yy + 5, { width: c.w - 8, align: c.align, characterSpacing: 0.6 });
     }
@@ -187,7 +269,7 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
   };
 
   y = enTete(y);
-  doc.font('Helvetica').fontSize(9);
+  doc.font('corps').fontSize(9);
 
   for (const [i, l] of totaux.lignes.entries()) {
     const hauteurTexte = doc.heightOfString(l.designation, { width: colonnes[0].w - 8 });
@@ -197,7 +279,7 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
       doc.addPage();
       y = doc.page.margins.top;
       y = enTete(y);
-      doc.font('Helvetica').fontSize(9);
+      doc.font('corps').fontSize(9);
     }
     if (i % 2 === 1) doc.rect(G, y, largeur, h).fill('#F5F7F9');
 
@@ -209,8 +291,8 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
       doc.text(`${Number(l.tva_taux)} %`, colonnes[3].x + 4, y + 5, { width: colonnes[3].w - 8, align: 'right' });
     }
     const colTotal = colonnes[colonnes.length - 1];
-    doc.font('Helvetica-Bold').text(eur(l.montant_ht), colTotal.x + 4, y + 5, { width: colTotal.w - 8, align: 'right' });
-    doc.font('Helvetica');
+    doc.font('gras').text(eur(l.montant_ht), colTotal.x + 4, y + 5, { width: colTotal.w - 8, align: 'right' });
+    doc.font('corps');
 
     if (l.remise_pct > 0) {
       doc.fillColor(GRIS).fontSize(7.5)
@@ -228,7 +310,7 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
 
   const xTot = D - 230;
   const ligneTotal = (libelle, valeur, gras = false, couleur = ENCRE) => {
-    doc.font(gras ? 'Helvetica-Bold' : 'Helvetica').fontSize(gras ? 10 : 9).fillColor(couleur);
+    doc.font(gras ? 'gras' : 'corps').fontSize(gras ? 10 : 9).fillColor(couleur);
     doc.text(libelle, xTot, y, { width: 130 });
     doc.text(valeur, xTot + 130, y, { width: 100, align: 'right' });
     y += gras ? 16 : 14;
@@ -256,7 +338,7 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
 
   const du = resteDu(totaux.net_a_payer, paiements);
   doc.rect(xTot, y, 230, 24).fill(BLEU);
-  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(11);
+  doc.fillColor('#FFFFFF').font('gras').fontSize(11);
   doc.text(du <= 0 ? 'SOLDÉE' : 'NET À PAYER', xTot + 8, y + 7, { width: 120 });
   doc.text(du <= 0 ? eur(0) : eur(du), xTot + 122, y + 7, { width: 100, align: 'right' });
   y += 40;
@@ -266,7 +348,7 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
   const motif = motifExoneration(categorie, entreprise);
   const mentions = [
     motif,
-    franchise && entreprise.forme_juridique.toLowerCase().includes('micro')
+    franchise && String(entreprise.forme_juridique || '').toLowerCase().includes('micro')
       ? 'Dispensé d’immatriculation au registre du commerce et des sociétés (RCS) et au répertoire des métiers (RM).'
       : '',
     entreprise.assurance_pro ? `Assurance professionnelle : ${entreprise.assurance_pro}.` : '',
@@ -283,7 +365,7 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
   if (y > doc.page.height - 150) { doc.addPage(); y = doc.page.margins.top; }
   doc.moveTo(G, y).lineTo(D, y).lineWidth(0.4).strokeColor(TRAIT).stroke();
   y += 8;
-  doc.font('Helvetica').fontSize(7.5).fillColor(GRIS)
+  doc.font('corps').fontSize(7.5).fillColor(GRIS)
     .text(mentions.join('\n'), G, y, { width: largeur, lineGap: 2 });
 
   // — Pied de page —

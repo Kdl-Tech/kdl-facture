@@ -1,0 +1,3 @@
+Polices DejaVu — DejaVu Fonts License (dérivée de Bitstream Vera).
+Libre de redistribution, y compris dans un logiciel commercial.
+Source : https://dejavu-fonts.github.io/

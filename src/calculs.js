@@ -9,9 +9,22 @@
  * l'exige l'administration — et non sur le total général.
  */
 
-/** Arrondi commercial au centime : 2,675 € donne bien 2,68 € et non 2,67 €. */
+/**
+ * Arrondi commercial au centime, symétrique.
+ *
+ * `Math.round(x * 100)` seul se trompe sur les valeurs que la virgule flottante
+ * représente juste en dessous : 8,245 devient 824 au lieu de 825. Et il arrondit
+ * vers le haut y compris pour les négatifs, si bien que −2,675 donnait −267 quand
+ * 2,675 donnait 268 — un avoir n'annulait alors pas exactement sa facture, et il
+ * restait un centime dû pour toujours.
+ *
+ * On arrondit donc la valeur absolue, avec une marge minuscule pour rattraper la
+ * représentation binaire, puis on remet le signe.
+ */
 function centimes(montantEuros) {
-  const v = Math.round((Number(montantEuros) + Number.EPSILON) * 100);
+  const nombre = Number(montantEuros) || 0;
+  const signe = nombre < 0 ? -1 : 1;
+  const v = signe * Math.round(Math.abs(nombre) * 100 + 1e-9);
   return Object.is(v, -0) ? 0 : v;
 }
 
@@ -31,8 +44,12 @@ function calculerLigne(ligne) {
   return {
     ...ligne,
     montant_ht: euros(htCts),
-    montant_tva: euros(tvaCts),
-    montant_ttc: euros(htCts + tvaCts),
+    // La TVA d'une ligne est indicative : la TVA due se calcule sur la base
+    // totale de chaque taux, jamais en additionnant les arrondis de lignes.
+    // Additionner ces deux champs donnerait un total différent de celui de la
+    // facture — ils sont là pour l'affichage, pas pour le calcul.
+    montant_tva_indicatif: euros(tvaCts),
+    montant_ttc_indicatif: euros(htCts + tvaCts),
     _ht_cts: htCts,
     _tva_cts: tvaCts,
   };

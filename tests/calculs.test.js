@@ -7,14 +7,16 @@ const { calculerDocument, calculerLigne, resteDu, calculerEcheance } = require('
 test('un centime ne se perd pas dans la virgule flottante', () => {
   const l = calculerLigne({ quantite: 3, prix_ht: 0.1, tva_taux: 20 });
   assert.strictEqual(l.montant_ht, 0.3);
-  assert.strictEqual(l.montant_tva, 0.06);
-  assert.strictEqual(l.montant_ttc, 0.36);
+  // Les montants de TVA par ligne sont indicatifs : la TVA due se calcule par
+  // taux sur l'ensemble du document, jamais en additionnant les lignes.
+  assert.strictEqual(l.montant_tva_indicatif, 0.06);
+  assert.strictEqual(l.montant_ttc_indicatif, 0.36);
 });
 
 test('la remise sapplique avant la TVA', () => {
   const l = calculerLigne({ quantite: 1, prix_ht: 100, remise_pct: 10, tva_taux: 20 });
   assert.strictEqual(l.montant_ht, 90);
-  assert.strictEqual(l.montant_tva, 18);
+  assert.strictEqual(l.montant_tva_indicatif, 18);
 });
 
 test('la TVA se calcule par taux, pas en additionnant les arrondis de lignes', () => {

@@ -100,6 +100,10 @@ class Service {
       throw new ErreurMetier("Ce client n'existe pas dans votre entreprise.");
     }
     const type = donnees.type || 'facture';
+    if (!Object.prototype.hasOwnProperty.call(PREFIXES, type)) {
+      throw new ErreurMetier(
+        `Type de document inconnu : « ${type} ». Valeurs acceptées : ${Object.keys(PREFIXES).join(', ')}.`);
+    }
     const dateEmission = donnees.date_emission || new Date().toISOString().slice(0, 10);
     const echeance = donnees.date_echeance
       || calculerEcheance(dateEmission, client.delai_paiement_jours);
@@ -107,12 +111,12 @@ class Service {
     const info = this.db.prepare(`
       INSERT INTO documents (entreprise_id, client_id, type, statut, date_emission, date_echeance,
                              date_livraison, categorie, mode_paiement, reference_commande,
-                             document_lie_id, note)
-      VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?)
+                             document_lie_id, acompte, note)
+      VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(entrepriseId, donnees.client_id, type, dateEmission, echeance,
       donnees.date_livraison || '', donnees.categorie || 'services',
       donnees.mode_paiement || 'virement', donnees.reference_commande || '',
-      donnees.document_lie_id || null, donnees.note || '');
+      donnees.document_lie_id || null, Number(donnees.acompte) || 0, donnees.note || '');
 
     this.remplacerLignes(info.lastInsertRowid, donnees.lignes || []);
     this.tracer(entrepriseId, info.lastInsertRowid, 'creation', `${type} en brouillon`);
@@ -146,7 +150,7 @@ class Service {
       throw new ErreurMetier("Ce document est émis : il ne se modifie plus.");
     }
     const champs = ['client_id', 'date_emission', 'date_echeance', 'date_livraison',
-      'categorie', 'mode_paiement', 'reference_commande', 'note'];
+      'categorie', 'mode_paiement', 'reference_commande', 'acompte', 'note'];
     const majs = champs.filter((c) => donnees[c] !== undefined);
     if (majs.length) {
       this.db.prepare(`UPDATE documents SET ${majs.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`)
@@ -315,7 +319,9 @@ class Service {
   // — Tableau de bord ——————————————————————————————————————
 
   statistiques(entrepriseId) {
-    const base = `FROM documents d WHERE d.entreprise_id = ? AND d.statut != 'brouillon' AND d.type IN ('facture','acompte')`;
+    // Les avoirs comptent : ils portent des totaux négatifs, et les exclure
+    // laissait le chiffre d'affaires gonflé d'une facture pourtant annulée.
+    const base = `FROM documents d WHERE d.entreprise_id = ? AND d.statut != 'brouillon' AND d.type IN ('facture','acompte','avoir')`;
     const total = (statut) => this.db.prepare(`
       SELECT COUNT(*) AS n FROM documents WHERE entreprise_id = ? AND statut = ?
     `).get(entrepriseId, statut).n;

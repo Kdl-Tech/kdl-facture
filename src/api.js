@@ -73,13 +73,27 @@ function creerApi(db) {
     return db.prepare('SELECT * FROM clients WHERE entreprise_id = ? AND actif = 1 ORDER BY nom').all(e.id);
   }));
 
+  /** Les seuls types de client qui existent — le contrôle de conformité en dépend. */
+  const TYPES_CLIENT = ['entreprise', 'particulier', 'public'];
+
+  /** Les colonnes modifiables d'un client. Toute autre clé est ignorée. */
+  const CHAMPS_CLIENT = ['type', 'nom', 'contact', 'siren', 'siret', 'tva_intra', 'code_service',
+    'numero_engagement', 'adresse', 'code_postal', 'ville', 'pays', 'email', 'telephone',
+    'livraison_adresse', 'livraison_code_postal', 'livraison_ville', 'livraison_pays',
+    'delai_paiement_jours', 'notes', 'actif'];
+
   api.post('/clients', (req, res) => repondre(res, () => {
     const e = entrepriseCourante();
     if (!e) throw new ErreurMetier("Renseignez d'abord votre entreprise.");
-    const champs = ['type', 'nom', 'contact', 'siren', 'siret', 'tva_intra', 'code_service',
-      'numero_engagement', 'adresse', 'code_postal', 'ville', 'pays', 'email', 'telephone',
-      'livraison_adresse', 'livraison_code_postal', 'livraison_ville', 'livraison_pays',
-      'delai_paiement_jours', 'notes'];
+    // Un type inconnu — « professionnel » au lieu d'« entreprise », par exemple —
+    // était accepté en silence, et le client perdait alors l'obligation de
+    // SIREN sans que personne ne s'en aperçoive. On refuse plutôt que de laisser
+    // passer une facture qui sera rejetée des mois plus tard.
+    if (req.body.type !== undefined && !TYPES_CLIENT.includes(req.body.type)) {
+      throw new ErreurMetier(
+        `Type de client inconnu : « ${req.body.type} ». Valeurs acceptées : ${TYPES_CLIENT.join(', ')}.`);
+    }
+    const champs = CHAMPS_CLIENT.filter((c) => c !== 'actif');
     const valeurs = champs.map((c) => (req.body[c] !== undefined ? req.body[c] : (c === 'delai_paiement_jours' ? 30 : (c === 'type' ? 'entreprise' : (c === 'pays' ? 'FR' : '')))));
     const info = db.prepare(`INSERT INTO clients (entreprise_id, ${champs.join(', ')}) VALUES (?, ${champs.map(() => '?').join(', ')})`)
       .run(e.id, ...valeurs);
@@ -87,8 +101,21 @@ function creerApi(db) {
   }));
 
   api.put('/clients/:id', (req, res) => repondre(res, () => {
-    const champs = Object.keys(req.body).filter((c) => c !== 'id' && c !== 'entreprise_id');
+    if (req.body.type !== undefined && !TYPES_CLIENT.includes(req.body.type)) {
+      throw new ErreurMetier(
+        `Type de client inconnu : « ${req.body.type} ». Valeurs acceptées : ${TYPES_CLIENT.join(', ')}.`);
+    }
+    // Les noms de colonnes viennent de cette liste, jamais du corps de la
+    // requête : sans cela, une clé comme « nom = (SELECT iban FROM entreprises) »
+    // s'écrivait telle quelle dans le SQL et permettait de lire ou d'écrire
+    // n'importe quoi dans la base.
+    const champs = CHAMPS_CLIENT.filter((c) => req.body[c] !== undefined);
     if (!champs.length) return service.client(req.params.id);
+    const client = service.client(req.params.id);
+    const e = entrepriseCourante();
+    if (!client || !e || client.entreprise_id !== e.id) {
+      throw new ErreurMetier("Ce client n'appartient pas à votre entreprise.");
+    }
     db.prepare(`UPDATE clients SET ${champs.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`)
       .run(...champs.map((c) => req.body[c]), req.params.id);
     return service.client(req.params.id);
@@ -115,6 +142,7 @@ function creerApi(db) {
 
   api.post('/articles', (req, res) => repondre(res, () => {
     const e = entrepriseCourante();
+    if (!e) throw new ErreurMetier("Renseignez d'abord votre entreprise.");
     const info = db.prepare(`
       INSERT INTO articles (entreprise_id, reference, designation, nature, unite, prix_ht, tva_taux)
       VALUES (?, ?, ?, ?, ?, ?, ?)

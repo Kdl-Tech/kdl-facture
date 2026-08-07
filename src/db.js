@@ -88,33 +88,68 @@ function ouvrir(cheminBase) {
  * sans jamais rien supprimer — les données de facturation ne se perdent pas.
  */
 function migrer(db) {
-  const AJOUTS = {
-    entreprises: {
-      seuil_franchise: 'REAL NOT NULL DEFAULT 0',
-      tva_taux_defaut: 'REAL NOT NULL DEFAULT 20',
-      territoire: "TEXT NOT NULL DEFAULT 'metropole'",
-      activite: "TEXT NOT NULL DEFAULT 'services'",
-      assurance_pro: "TEXT NOT NULL DEFAULT ''",
-      logo_path: "TEXT NOT NULL DEFAULT ''",
-    },
-  };
-  for (const [table, colonnes] of Object.entries(AJOUTS)) {
+  // La liste des colonnes attendues est lue dans le schéma déclaré plus bas :
+  // une colonne ajoutée au CREATE TABLE est donc automatiquement ajoutée aux
+  // bases existantes. Une liste tenue à la main finit toujours par diverger —
+  // et une base d'une version antérieure devient alors inutilisable.
+  for (const [table, colonnes] of Object.entries(colonnesAttendues())) {
     let existantes;
     try {
       existantes = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
     } catch {
       continue;
     }
-    for (const [nom, definition] of Object.entries(colonnes)) {
-      if (!existantes.includes(nom)) {
+    if (!existantes.length) continue;
+    for (const { nom, definition } of colonnes) {
+      if (existantes.includes(nom)) continue;
+      try {
         db.exec(`ALTER TABLE ${table} ADD COLUMN ${nom} ${definition}`);
+      } catch {
+        // Une colonne qu'SQLite refuse d'ajouter après coup (clé primaire,
+        // contrainte UNIQUE) ne doit pas empêcher le logiciel de démarrer.
       }
     }
   }
 }
 
+/**
+ * Les colonnes de chaque table, lues dans le texte du schéma.
+ *
+ * SQLite n'ajoute pas de colonne à une table déjà créée : il faut le lui
+ * demander. Plutôt que d'entretenir un second inventaire, on relit celui qui
+ * fait foi.
+ */
+function colonnesAttendues() {
+  const tables = {};
+  const schema = SCHEMA;
+  const blocs = schema.matchAll(/CREATE TABLE IF NOT EXISTS (\w+) \(([\s\S]*?)\n\);/g);
+  for (const [, table, corps] of blocs) {
+    const colonnes = [];
+    for (const ligne of corps.split('\n')) {
+      const propre = ligne.replace(/--.*$/, '').trim().replace(/,$/, '');
+      if (!propre) continue;
+      if (/^(PRIMARY|UNIQUE|FOREIGN|CHECK|CONSTRAINT)\b/i.test(propre)) continue;
+      const m = /^(\w+)\s+(.+)$/.exec(propre);
+      if (!m) continue;
+      // Une colonne ajoutée après coup ne peut pas être clé primaire ni
+      // référencer une autre table : on ne garde que le type et le défaut.
+      const definition = m[2]
+        .replace(/PRIMARY KEY( AUTOINCREMENT)?/i, '')
+        .replace(/REFERENCES \w+\s*\([^)]*\)( ON DELETE \w+( \w+)?)?/i, '')
+        .trim();
+      if (!definition || /^(INTEGER|TEXT|REAL|BLOB|NUMERIC)/i.test(definition) === false) continue;
+      colonnes.push({ nom: m[1], definition });
+    }
+    tables[table] = colonnes;
+  }
+  return tables;
+}
+
 function creerSchema(db) {
-  db.exec(`
+  db.exec(SCHEMA);
+}
+
+const SCHEMA = `
 CREATE TABLE IF NOT EXISTS entreprises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nom TEXT NOT NULL,
@@ -212,6 +247,8 @@ CREATE TABLE IF NOT EXISTS documents (
   mode_paiement TEXT NOT NULL DEFAULT 'virement',
   reference_commande TEXT NOT NULL DEFAULT '',
   document_lie_id INTEGER REFERENCES documents(id),
+  -- Acompte déjà versé, déduit du net à payer et porté dans le XML.
+  acompte REAL NOT NULL DEFAULT 0,
   note TEXT NOT NULL DEFAULT '',
   -- Empreinte du contenu au moment de l'émission : preuve d'inaltérabilité.
   empreinte TEXT NOT NULL DEFAULT '',
@@ -268,7 +305,6 @@ CREATE INDEX IF NOT EXISTS idx_documents_client ON documents(client_id);
 CREATE INDEX IF NOT EXISTS idx_documents_statut ON documents(entreprise_id, statut);
 CREATE INDEX IF NOT EXISTS idx_lignes_document ON lignes(document_id);
 CREATE INDEX IF NOT EXISTS idx_paiements_document ON paiements(document_id);
-`);
-}
+`;
 
 module.exports = { ouvrir, creerSchema, migrer, cheminParDefaut, moteur };

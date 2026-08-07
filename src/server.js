@@ -43,7 +43,9 @@ function demarrer(options = {}) {
       process.stderr.write(`Le port ${PORT} est déjà pris : KDL Facture tourne peut-être déjà.\n`);
       process.exit(1);
     }
-    throw e;
+    // Toute autre erreur est signalée, jamais fatale : perdre le serveur en
+    // pleine saisie coûterait le travail en cours.
+    process.stderr.write(`  Erreur réseau : ${e.message}\n`);
   });
 
   return { app, db, serveur };
