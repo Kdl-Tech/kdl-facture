@@ -18,6 +18,7 @@
  */
 
 const { calculerDocument } = require('./calculs');
+const { territoire } = require('./territoires');
 
 const PROFIL_EN16931 = 'urn:cen.eu:en16931:2017';
 
@@ -64,6 +65,9 @@ function montant(valeur) {
  *   G  — exportation hors UE
  */
 function categorieTva(document, entreprise, client) {
+  // La Guyane et Mayotte sont hors champ de la TVA : cela prime sur le régime
+  // déclaré, parce que c'est le territoire qui décide, pas l'entreprise.
+  if (!territoire(entreprise).tva) return 'E';
   if (entreprise.regime_tva === 'franchise') return 'E';
   if (document.autoliquidation) return 'AE';
   const paysClient = (client.pays || 'FR').toUpperCase();
@@ -78,10 +82,13 @@ function categorieTva(document, entreprise, client) {
 /** La mention qui doit accompagner une facture sans TVA. */
 function motifExoneration(categorie, entreprise) {
   switch (categorie) {
-    case 'E':
+    case 'E': {
+      const zone = territoire(entreprise);
+      if (!zone.tva) return zone.mention;
       return entreprise.regime_tva === 'franchise'
         ? 'TVA non applicable, article 293 B du CGI'
         : 'Opération exonérée de TVA';
+    }
     case 'AE':
       return 'Autoliquidation — article 283-2 du CGI';
     case 'K':
@@ -266,6 +273,20 @@ function verifier({ document, entreprise, client, lignes }) {
   if (entreprise.regime_tva === 'franchise') {
     const avecTva = (lignes || []).some((l) => Number(l.tva_taux) > 0);
     exiger(!avecTva, "Vous êtes en franchise de TVA : aucune ligne ne peut porter de TVA.");
+  }
+
+  const zone = territoire(entreprise);
+  if (!zone.tva) {
+    const avecTva = (lignes || []).some((l) => Number(l.tva_taux) > 0);
+    exiger(!avecTva, `La TVA n'est pas applicable en ${zone.nom} (article 294 du CGI) : aucune ligne ne peut en porter.`);
+  } else if (entreprise.regime_tva !== 'franchise') {
+    // Un taux hors barème du territoire est presque toujours une erreur de
+    // saisie — 20 % facturés depuis la Guadeloupe, par exemple.
+    for (const [i, l] of (lignes || []).entries()) {
+      const taux = Number(l.tva_taux);
+      exiger(taux === 0 || zone.taux.includes(taux),
+        `Ligne ${i + 1} : le taux de ${taux} % n'existe pas en ${zone.nom}. Taux applicables : ${zone.taux.join(' %, ')} %.`);
+    }
   }
 
   return { valide: anomalies.length === 0, anomalies };

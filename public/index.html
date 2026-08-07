@@ -21,6 +21,7 @@
     <button class="onglet" data-vue="articles"><span>≡</span> Catalogue</button>
     <button class="onglet" data-vue="entreprise"><span>⚑</span> Mon entreprise</button>
     <button class="onglet" data-vue="journal"><span>⛓</span> Journal</button>
+    <button class="onglet" data-vue="references"><span>§</span> Références</button>
   </nav>
   <div class="rail-pied">
     <button class="lien-discret" id="btn-export">Export comptable</button>
@@ -95,7 +96,17 @@
       <div><div class="sur-titre">Paramètres</div><h1>Mon entreprise</h1></div>
     </header>
     <p class="aide">Ces informations partent dans chaque facture, et dans le fichier XML que lira le logiciel de votre client. Une erreur ici se retrouve partout.</p>
+    <div id="bandeau-regime"></div>
     <form id="form-entreprise" class="formulaire"></form>
+  </section>
+
+  <!-- ═══ RÉFÉRENCES ═══ -->
+  <section class="vue" id="vue-references">
+    <header class="entete">
+      <div><div class="sur-titre">Sources</div><h1>Ce sur quoi ce logiciel s'appuie</h1></div>
+    </header>
+    <p class="aide">Les règles appliquées ici viennent des textes ci-dessous. Elles évoluent : en cas de doute, c'est la source officielle qui fait foi, pas ce logiciel. Chaque lien s'ouvre sur le site de l'État.</p>
+    <div id="references"></div>
   </section>
 
   <!-- ═══ JOURNAL ═══ -->

@@ -11,6 +11,7 @@ const { Service, ErreurMetier } = require('./factures');
 const { genererPDF } = require('./pdf');
 const { genererXML, verifier } = require('./facturx');
 const { calculerDocument } = require('./calculs');
+const { TERRITOIRES, territoire, departement, devinerPrecis, tauxDisponibles } = require('./territoires');
 
 function creerApi(db) {
   const service = new Service(db);
@@ -34,6 +35,17 @@ function creerApi(db) {
   const entrepriseCourante = () =>
     db.prepare('SELECT * FROM entreprises ORDER BY id LIMIT 1').get();
 
+  /** Le taux à proposer : zéro en franchise, sinon celui choisi par l'entreprise. */
+  const tauxParDefaut = (e) => {
+    if (!e || e.regime_tva === 'franchise') return 0;
+    const zone = territoire(e);
+    if (!zone.tva) return 0;
+    const choisi = Number(e.tva_taux_defaut);
+    // Un taux qui n'existe pas sur le territoire ne doit pas être proposé :
+    // on retombe sur le taux normal de la zone.
+    return zone.taux.includes(choisi) ? choisi : zone.taux_normal;
+  };
+
   // — Entreprise ———————————————————————————————————————————
   api.get('/entreprise', (req, res) => repondre(res, () => entrepriseCourante() || {}));
 
@@ -41,7 +53,8 @@ function creerApi(db) {
     const actuelle = entrepriseCourante();
     const champs = ['nom', 'forme_juridique', 'siren', 'siret', 'tva_intra', 'rcs', 'capital',
       'adresse', 'code_postal', 'ville', 'pays', 'email', 'telephone', 'iban', 'bic',
-      'regime_tva', 'tva_sur_debits', 'penalites_taux', 'escompte'];
+      'regime_tva', 'seuil_franchise', 'tva_taux_defaut', 'territoire', 'activite', 'assurance_pro',
+      'tva_sur_debits', 'penalites_taux', 'escompte'];
     const valeurs = champs.map((c) => (req.body[c] !== undefined ? req.body[c] : (actuelle ? actuelle[c] : '')));
     if (actuelle) {
       db.prepare(`UPDATE entreprises SET ${champs.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`)
@@ -106,7 +119,8 @@ function creerApi(db) {
       INSERT INTO articles (entreprise_id, reference, designation, nature, unite, prix_ht, tva_taux)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(e.id, req.body.reference || '', req.body.designation || '', req.body.nature || 'service',
-      req.body.unite || 'heure', Number(req.body.prix_ht) || 0, Number(req.body.tva_taux) ?? 20);
+      req.body.unite || 'heure', Number(req.body.prix_ht) || 0,
+      req.body.tva_taux !== undefined ? Number(req.body.tva_taux) : tauxParDefaut(e));
     return db.prepare('SELECT * FROM articles WHERE id = ?').get(info.lastInsertRowid);
   }));
 
@@ -176,6 +190,29 @@ function creerApi(db) {
   /** Aperçu des totaux pendant la saisie, sans rien enregistrer. */
   api.post('/apercu', (req, res) => repondre(res, () => calculerDocument(req.body.lignes || [], { acompte: req.body.acompte })));
 
+  /** Les territoires fiscaux et leurs taux, pour que l'interface les propose. */
+  api.get('/territoires', (req, res) => repondre(res, () => {
+    const e = entrepriseCourante();
+    return {
+      liste: Object.entries(TERRITOIRES).map(([cle, v]) => ({
+        cle,
+        nom: v.nom,
+        groupe: v.groupe,
+        taux: v.taux,
+        taux_normal: v.taux_normal,
+        tva: v.tva,
+        base: v.base || '',
+        impose: v.impose || [],
+        permet: v.permet || [],
+        mention: v.mention || '',
+      })),
+      courant: e ? territoire(e) : null,
+      taux_disponibles: tauxDisponibles(e),
+      suggestion: e ? devinerPrecis(e.code_postal) : 'metropole',
+      departement: e ? departement(e.code_postal) : null,
+    };
+  }));
+
   // — Pilotage —————————————————————————————————————————————
   api.get('/tableau-de-bord', (req, res) => repondre(res, () => {
     const e = entrepriseCourante();
@@ -183,6 +220,8 @@ function creerApi(db) {
     return {
       entreprise: e,
       stats: service.statistiques(e.id),
+      franchise: service.suiviFranchise(e.id),
+      territoire: territoire(e),
       impayes: service.impayes(e.id),
       brouillons: service.liste(e.id, { statut: 'brouillon' }),
       derniers: service.liste(e.id).slice(0, 8),

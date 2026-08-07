@@ -12,7 +12,7 @@ const jour = (iso) => (iso ? String(iso).split('-').reverse().join('/') : '—')
 const aujourdhui = () => new Date().toISOString().slice(0, 10);
 const echapper = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-let etat = { entreprise: null, clients: [], articles: [], filtre: '' };
+let etat = { entreprise: null, clients: [], articles: [], filtre: '', territoires: null };
 
 /* ─── Réseau ─── */
 async function api(chemin, options = {}) {
@@ -46,6 +46,7 @@ function aller(vue) {
   const chargeurs = {
     brief: chargerBrief, documents: chargerDocuments, clients: chargerClients,
     articles: chargerArticles, entreprise: chargerEntreprise, journal: chargerJournal,
+    references: chargerReferences,
   };
   (chargeurs[vue] || (() => {}))();
 }
@@ -74,6 +75,7 @@ async function chargerBrief() {
   }
 
   const { stats, impayes, brouillons } = d;
+  etat.entreprise = d.entreprise;
   const phrases = [];
   if (impayes.length) {
     const total = impayes.reduce((s, i) => s + i.reste_du, 0);
@@ -89,12 +91,27 @@ async function chargerBrief() {
     : `Tout est à jour : aucune facture en retard, aucun brouillon en attente. ${stats.emises ? `${stats.emises} facture${stats.emises > 1 ? 's' : ''} émise${stats.emises > 1 ? 's' : ''} à ce jour.` : 'Prêt à facturer.'}`;
   ecrire($('#brief-texte'), texte, true);
 
-  $('#compteurs').innerHTML = [
-    { v: eur(stats.chiffre_affaires_ttc), e: 'Facturé TTC', c: '' },
+  const franchise = d.entreprise.regime_tva === 'franchise';
+  const compteurs = [
+    { v: eur(stats.chiffre_affaires_ttc), e: franchise ? 'Facturé' : 'Facturé TTC', c: '' },
     { v: eur(stats.encaisse), e: 'Encaissé', c: 'c-vert' },
     { v: eur(stats.reste_du), e: 'Reste à encaisser', c: stats.reste_du > 0 ? 'c-ambre' : '' },
     { v: eur(stats.en_retard), e: 'En retard', c: stats.en_retard > 0 ? 'c-rouge' : '' },
-  ].map((c) => `<div class="compteur ${c.c}"><div class="valeur">${c.v}</div><div class="etiquette">${c.e}</div></div>`).join('');
+  ];
+  // En franchise, le chiffre qui compte vraiment est l'encaissé de l'année :
+  // c'est lui qui sert à l'URSSAF et au suivi du plafond de TVA.
+  if (d.franchise) {
+    const f = d.franchise;
+    compteurs.unshift(f.renseigne
+      ? {
+        v: eur(f.encaisse),
+        e: `Encaissé ${f.annee} — ${f.pourcentage} % du plafond`,
+        c: f.alerte === 'depasse' ? 'c-rouge' : (f.alerte === 'proche' ? 'c-ambre' : 'c-vert'),
+      }
+      : { v: eur(f.encaisse), e: `Encaissé en ${f.annee}`, c: 'c-vert' });
+  }
+  $('#compteurs').innerHTML = compteurs
+    .map((c) => `<div class="compteur ${c.c}"><div class="valeur">${c.v}</div><div class="etiquette">${c.e}</div></div>`).join('');
 
   const cartes = [];
   for (const i of impayes.slice(0, 4)) {
@@ -118,6 +135,18 @@ async function chargerBrief() {
         <div class="detail">Créé le ${jour(b.date_emission)} — pas encore émis</div>
       </div>
       <div class="actions"><button class="bouton" data-ouvrir="${b.id}">Reprendre</button></div></div>`);
+  }
+  if (d.franchise && d.franchise.alerte) {
+    const f = d.franchise;
+    cartes.unshift(f.alerte === 'depasse'
+      ? `<div class="carte k-rouge"><span class="badge b-rouge">plafond dépassé</span>
+        <div class="corps"><div class="titre">Vous avez dépassé le plafond de franchise de TVA</div>
+        <div class="detail">${eur(f.encaisse)} encaissés en ${f.annee}, pour un plafond de ${eur(f.seuil)}. La TVA devient exigible — rapprochez-vous de votre comptable ou du service des impôts.</div></div>
+        <div class="actions"><button class="bouton" data-vue="entreprise">Réglages</button></div></div>`
+      : `<div class="carte k-ambre"><span class="badge b-ambre">${f.pourcentage} % du plafond</span>
+        <div class="corps"><div class="titre">Vous approchez du plafond de franchise de TVA</div>
+        <div class="detail">${eur(f.encaisse)} encaissés en ${f.annee}. Il reste ${eur(f.restant)} avant de devoir facturer la TVA.</div></div>
+        <div class="actions"><button class="bouton" data-vue="entreprise">Réglages</button></div></div>`);
   }
   if (!d.journal.intact) {
     cartes.unshift(`<div class="carte k-rouge"><span class="badge b-rouge">alerte</span>
@@ -254,6 +283,61 @@ async function chargerEntreprise() {
       ${options.indice ? `<span class="indice">${options.indice}</span>` : ''}
     </div>`;
 
+  const enFranchise = (e.regime_tva || 'franchise') === 'franchise';
+  if (!etat.territoires) etat.territoires = await api('/territoires');
+  const zones = etat.territoires.liste;
+  const zoneActuelle = e.territoire || 'metropole';
+  const suggestion = etat.territoires.suggestion;
+  const dep = etat.territoires.departement;
+  const zoneDetail = zones.find((z) => z.cle === zoneActuelle);
+  const groupes = [...zones.reduce((carte, z) => {
+    if (!carte.has(z.groupe)) carte.set(z.groupe, []);
+    carte.get(z.groupe).push(z);
+    return carte;
+  }, new Map())];
+  $('#bandeau-regime').innerHTML = `
+    <div class="regime">
+      <div class="regime-question">
+        <strong>Où votre entreprise est-elle établie</strong>
+        <span>La TVA n'est pas la même partout en France : 8,5 % aux Antilles et à La Réunion, 20 % en métropole, et pas de TVA du tout en Guyane ni à Mayotte.</span>
+      </div>
+      ${dep ? `<p class="indice">D'après votre code postal : <strong>${echapper(dep.nom)} (${echapper(dep.code)})</strong>${suggestion !== zoneActuelle ? ` — territoire fiscal <strong>${echapper((zones.find((z) => z.cle === suggestion) || {}).nom || suggestion)}</strong>, <button type="button" class="lien-inline" data-territoire="${suggestion}">appliquer</button>` : ''}</p>` : ''}
+      ${groupes.map(([groupe, membres]) => `
+        <div class="zone-groupe">
+          <h3 class="zone-titre">${echapper(groupe)}</h3>
+          <div class="zone-grille">
+            ${membres.map((z) => `
+              <button type="button" class="zone-carte ${z.cle === zoneActuelle ? 'actif' : ''}" data-territoire="${z.cle}">
+                <span class="zone-nom">${echapper(z.nom)}</span>
+                <span class="zone-taux ${z.tva ? '' : 'sans'}">${z.tva ? `${String(z.taux_normal).replace('.', ',')} % · ${z.taux.map((x) => String(x).replace('.', ',')).join(' / ')}` : 'TVA non applicable'}</span>
+              </button>`).join('')}
+          </div>
+        </div>`).join('')}
+      ${zoneDetail ? `
+        <div class="zone-fiche">
+          <div class="zone-fiche-tete"><strong>${echapper(zoneDetail.nom)}</strong><span class="badge b-gris">${echapper(zoneDetail.base)}</span></div>
+          ${zoneDetail.impose.length ? `<div class="zone-liste"><span class="zone-liste-titre">Ce que ce territoire impose</span><ul>${zoneDetail.impose.map((x) => `<li>${echapper(x)}</li>`).join('')}</ul></div>` : ''}
+          ${zoneDetail.permet.length ? `<div class="zone-liste"><span class="zone-liste-titre">Ce qu'il permet</span><ul>${zoneDetail.permet.map((x) => `<li>${echapper(x)}</li>`).join('')}</ul></div>` : ''}
+        </div>` : ''}
+    </div>
+
+    <div class="regime">
+      <div class="regime-question">
+        <strong>Votre régime de TVA</strong>
+        <span>Il commande tout le reste : ce qui s'affiche sur vos factures, les mentions légales, et les totaux.</span>
+      </div>
+      <div class="regime-choix">
+        <button type="button" class="regime-carte ${enFranchise ? 'actif' : ''}" data-regime="franchise">
+          <span class="regime-titre">Je ne facture pas la TVA</span>
+          <span class="regime-detail">Micro-entreprise, auto-entrepreneur, franchise en base — article 293 B du CGI. Vos factures ne portent aucune TVA.</span>
+        </button>
+        <button type="button" class="regime-carte ${enFranchise ? '' : 'actif'}" data-regime="normal">
+          <span class="regime-titre">Je facture la TVA</span>
+          <span class="regime-detail">Société ou entreprise assujettie. Chaque ligne porte son taux, la ventilation apparaît sur la facture.</span>
+        </button>
+      </div>
+    </div>`;
+
   $('#form-entreprise').innerHTML = [
     champ('nom', 'Nom de l’entreprise', e.nom),
     champ('forme_juridique', 'Forme juridique', e.forme_juridique, { placeholder: 'EI, SASU, SARL…' }),
@@ -268,9 +352,24 @@ async function chargerEntreprise() {
     champ('telephone', 'Téléphone', e.telephone),
     champ('iban', 'IBAN', e.iban, { indice: 'Figure sur la facture pour le virement' }),
     champ('bic', 'BIC', e.bic),
-    champ('regime_tva', 'Régime de TVA', e.regime_tva, {
-      choix: [['normal', 'TVA applicable'], ['franchise', 'Franchise en base (art. 293 B)']],
-      indice: 'En franchise, aucune ligne ne peut porter de TVA',
+    `<input type="hidden" name="regime_tva" id="e-regime_tva" value="${enFranchise ? 'franchise' : 'normal'}">`,
+    `<input type="hidden" name="territoire" id="e-territoire" value="${echapper(zoneActuelle)}">`,
+    enFranchise
+      ? champ('seuil_franchise', 'Plafond de franchise (€)', e.seuil_franchise || '', {
+        type: 'number',
+        indice: 'Le montant change avec les lois de finances — voir l’onglet Références. Laissez vide pour ne pas suivre.',
+      })
+      : champ('tva_taux_defaut', 'Taux de TVA habituel', String(e.tva_taux_defaut ?? 20), {
+        choix: (zones.find((z) => z.cle === zoneActuelle) || { taux: [20] }).taux
+          .map((taux) => [String(taux), `${String(taux).replace('.', ',')} %`]),
+        indice: 'Proposé sur chaque nouvelle ligne — modifiable ligne par ligne',
+      }),
+    champ('activite', 'Nature de l’activité', e.activite, {
+      choix: [['services', 'Prestations de services'], ['vente', 'Vente de marchandises'], ['mixte', 'Les deux']],
+    }),
+    champ('assurance_pro', 'Assurance professionnelle', e.assurance_pro, {
+      large: true,
+      indice: 'Assureur et n° de contrat — obligatoire pour une activité réglementée',
     }),
     champ('tva_sur_debits', 'TVA d’après les débits', String(e.tva_sur_debits || 0), {
       choix: [['0', 'Non'], ['1', 'Oui — mention ajoutée']],
@@ -279,6 +378,103 @@ async function chargerEntreprise() {
     champ('escompte', 'Mention d’escompte', e.escompte, { large: true }),
     `<div class="champ large"><button class="bouton primaire" type="submit">Enregistrer</button></div>`,
   ].join('');
+}
+
+/* ─── Références officielles ───
+   Un logiciel de facturation applique des règles qui ne lui appartiennent pas.
+   Autant dire d'où elles viennent, et laisser vérifier. */
+const REFERENCES = [
+  {
+    theme: 'La réforme de la facturation électronique',
+    liens: [
+      {
+        titre: 'La facturation électronique — ce que ça change pour vous',
+        url: 'https://www.impots.gouv.fr/facturation-electronique-qu-est-ce-que-ca-change-pour-moi',
+        source: 'impots.gouv.fr',
+        note: "Le calendrier par taille d'entreprise, les formats acceptés, le rôle des plateformes.",
+      },
+      {
+        titre: 'Guide pratique de démarrage',
+        url: 'https://www.impots.gouv.fr/sites/default/files/media/1_metier/2_professionnel/EV/2_gestion/290_facturation_electronique/guide_pratique_facturation_electronique.pdf',
+        source: 'impots.gouv.fr — PDF',
+        note: "Document de référence de l'administration, y compris sur la tolérance annoncée au démarrage.",
+      },
+      {
+        titre: 'Décret n° 2026-677 du 27 juillet 2026',
+        url: 'https://www.legifrance.gouv.fr/jorf/id/JORFTEXT000054499487',
+        source: 'Légifrance',
+        note: "Cadre finalisé des plateformes agréées — le terme officiel qui remplace « PDP ».",
+      },
+    ],
+  },
+  {
+    theme: 'Les mentions obligatoires sur une facture',
+    liens: [
+      {
+        titre: 'Article 242 nonies A, annexe II du CGI',
+        url: 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000050811276',
+        source: 'Légifrance',
+        note: "La liste qui fait foi. C'est elle qui impose le SIREN du client, l'adresse de livraison et la catégorie d'opération.",
+      },
+      {
+        titre: 'Facturation entre professionnels : règles et mentions',
+        url: 'https://entreprendre.service-public.fr/vosdroits/F31808',
+        source: 'entreprendre.service-public.fr',
+        note: 'La même chose en français courant, délais de paiement et pénalités compris.',
+      },
+    ],
+  },
+  {
+    theme: 'Micro-entreprise et franchise de TVA',
+    liens: [
+      {
+        titre: 'La franchise en base de TVA',
+        url: 'https://entreprendre.service-public.fr/vosdroits/F21746',
+        source: 'entreprendre.service-public.fr',
+        note: "Les plafonds en vigueur et la mention à porter sur les factures. À consulter avant de renseigner le plafond dans les réglages : il change avec les lois de finances.",
+      },
+      {
+        titre: 'Espace auto-entrepreneur',
+        url: 'https://www.autoentrepreneur.urssaf.fr/',
+        source: 'URSSAF',
+        note: 'Déclaration du chiffre d’affaires encaissé — le montant que suit le brief de ce logiciel.',
+      },
+      {
+        titre: 'Obligations comptables du micro-entrepreneur',
+        url: 'https://entreprendre.service-public.fr/vosdroits/F23266',
+        source: 'entreprendre.service-public.fr',
+        note: 'Livre des recettes, conservation des pièces, registre des achats.',
+      },
+    ],
+  },
+  {
+    theme: 'Trouver une plateforme agréée',
+    liens: [
+      {
+        titre: 'Annuaire des plateformes agréées',
+        url: 'https://www.impots.gouv.fr/liste-des-plateformes-agreees',
+        source: 'impots.gouv.fr',
+        note: "Ce logiciel produit le fichier conforme ; la transmission passe obligatoirement par l'une d'elles (article 289 bis du CGI).",
+      },
+    ],
+  },
+];
+
+function chargerReferences() {
+  $('#references').innerHTML = REFERENCES.map((bloc) => `
+    <section class="ref-bloc">
+      <h2 class="ref-theme">${echapper(bloc.theme)}</h2>
+      <div class="pile">
+        ${bloc.liens.map((l) => `
+          <a class="carte ref-carte" href="${l.url}" target="_blank" rel="noopener noreferrer">
+            <div class="corps">
+              <div class="titre">${echapper(l.titre)}</div>
+              <div class="detail">${echapper(l.note)}</div>
+            </div>
+            <span class="badge b-cyan">${echapper(l.source)}</span>
+          </a>`).join('')}
+      </div>
+    </section>`).join('');
 }
 
 /* ─── Journal ─── */
@@ -296,6 +492,13 @@ async function chargerJournal() {
       <td>${echapper(l.detail)}</td></tr>`).join('')}</tbody>`;
 }
 
+/** Le taux proposé sur une nouvelle ligne : zéro en franchise, sinon celui
+    des réglages. Personne ne devrait avoir à corriger « 20 » à chaque ligne. */
+function tauxHabituel() {
+  if (!etat.entreprise || etat.entreprise.regime_tva === 'franchise') return 0;
+  return Number(etat.entreprise.tva_taux_defaut) || 20;
+}
+
 /* ─── Tiroir : édition d'une facture ─── */
 let brouillon = null;
 
@@ -311,6 +514,7 @@ function fermerTiroir() {
 }
 
 async function nouvelleFacture(clientId = null) {
+  if (!etat.entreprise) etat.entreprise = await api('/entreprise');
   if (!etat.clients.length) etat.clients = await api('/clients');
   if (!etat.clients.length) { noter('Ajoutez d’abord un client.', 'erreur'); return aller('clients'); }
   if (!etat.articles.length) etat.articles = await api('/articles').catch(() => []);
@@ -323,7 +527,7 @@ async function nouvelleFacture(clientId = null) {
     mode_paiement: 'virement',
     reference_commande: '',
     note: '',
-    lignes: [{ designation: '', quantite: 1, prix_ht: 0, tva_taux: 20, unite: 'heure', remise_pct: 0 }],
+    lignes: [{ designation: '', quantite: 1, prix_ht: 0, tva_taux: tauxHabituel(), unite: 'heure', remise_pct: 0 }],
   };
   ouvrirTiroir('Nouvelle facture');
   dessinerEditeur();
@@ -333,6 +537,7 @@ async function nouvelleFacture(clientId = null) {
 async function ouvrirDocument(id) {
   const c = await api(`/documents/${id}`);
   if (c.document.statut === 'brouillon') {
+    if (!etat.entreprise) etat.entreprise = await api('/entreprise');
     if (!etat.clients.length) etat.clients = await api('/clients');
     if (!etat.articles.length) etat.articles = await api('/articles').catch(() => []);
     brouillon = {
@@ -355,6 +560,7 @@ async function ouvrirDocument(id) {
 
 function dessinerEditeur() {
   const b = brouillon;
+  const franchise = !etat.entreprise || etat.entreprise.regime_tva === 'franchise';
   const corps = $('#tiroir-corps');
   corps.innerHTML = `
     <div class="formulaire" style="margin-bottom:22px">
@@ -375,8 +581,9 @@ function dessinerEditeur() {
         <input id="f-commande" value="${echapper(b.reference_commande)}"></div>
     </div>
 
-    <div class="lignes-tete">
-      <div>Désignation</div><div>Qté</div><div>Prix HT</div><div>TVA %</div><div style="text-align:right">Total</div><div></div>
+    <div class="lignes-tete ${franchise ? 'sans-tva' : ''}">
+      <div>Désignation</div><div>Qté</div><div>${franchise ? 'Prix' : 'Prix HT'}</div>
+      ${franchise ? '' : '<div>TVA %</div>'}<div style="text-align:right">Total</div><div></div>
     </div>
     <div id="lignes"></div>
     <div style="display:flex;gap:8px;margin-top:10px">
@@ -404,12 +611,15 @@ function dessinerEditeur() {
 }
 
 function dessinerLignes() {
+  const franchise = !etat.entreprise || etat.entreprise.regime_tva === 'franchise';
   $('#lignes').innerHTML = brouillon.lignes.map((l, i) => `
-    <div class="ligne-saisie" data-i="${i}">
+    <div class="ligne-saisie ${franchise ? 'sans-tva' : ''}" data-i="${i}">
       <input class="l-designation" value="${echapper(l.designation)}" placeholder="Prestation ou produit">
       <input class="l-quantite" type="number" step="0.25" value="${l.quantite}">
       <input class="l-prix" type="number" step="0.01" value="${l.prix_ht}">
-      <input class="l-tva" type="number" step="0.1" value="${l.tva_taux}">
+      ${franchise
+        ? `<input class="l-tva" type="hidden" value="0">`
+        : `<input class="l-tva" type="number" step="0.1" value="${l.tva_taux}">`}
       <div class="ligne-total" data-total="${i}">—</div>
       <button class="icone" data-suppr-ligne="${i}" title="Retirer">✕</button>
     </div>`).join('');
@@ -422,10 +632,13 @@ async function rafraichirRecap() {
     const c = $(`[data-total="${i}"]`);
     if (c) c.textContent = eur(l.montant_ht);
   });
-  $('#recap').innerHTML = `
-    <div class="recap-ligne"><span class="sourdine">Total HT</span><span>${eur(t.total_ht)}</span></div>
-    ${t.ventilation_tva.map((v) => `<div class="recap-ligne"><span class="sourdine">TVA ${v.taux} % sur ${eur(v.base_ht)}</span><span>${eur(v.montant_tva)}</span></div>`).join('')}
-    <div class="recap-ligne total"><span>Total TTC</span><span>${eur(t.total_ttc)}</span></div>`;
+  const franchise = !etat.entreprise || etat.entreprise.regime_tva === 'franchise';
+  $('#recap').innerHTML = franchise
+    ? `<div class="recap-ligne total"><span>Total</span><span>${eur(t.total_ht)}</span></div>
+       <div class="recap-ligne"><span class="sourdine">TVA non applicable, article 293 B du CGI</span><span></span></div>`
+    : `<div class="recap-ligne"><span class="sourdine">Total HT</span><span>${eur(t.total_ht)}</span></div>
+       ${t.ventilation_tva.map((v) => `<div class="recap-ligne"><span class="sourdine">TVA ${v.taux} % sur ${eur(v.base_ht)}</span><span>${eur(v.montant_tva)}</span></div>`).join('')}
+       <div class="recap-ligne total"><span>Total TTC</span><span>${eur(t.total_ttc)}</span></div>`;
 }
 
 function lireLignes() {
@@ -531,7 +744,7 @@ document.addEventListener('click', async (ev) => {
     if (c.dataset.supprLigne !== undefined) {
       lireLignes();
       brouillon.lignes.splice(Number(c.dataset.supprLigne), 1);
-      if (!brouillon.lignes.length) brouillon.lignes.push({ designation: '', quantite: 1, prix_ht: 0, tva_taux: 20 });
+      if (!brouillon.lignes.length) brouillon.lignes.push({ designation: '', quantite: 1, prix_ht: 0, tva_taux: tauxHabituel() });
       dessinerLignes();
       return rafraichirRecap();
     }
@@ -572,6 +785,41 @@ document.addEventListener('change', async (ev) => {
   }
 });
 
+document.addEventListener('change', async (ev) => {
+  if (ev.target.id !== 'e-territoire-select') return;
+  try {
+    await api('/entreprise', { method: 'PUT', body: { territoire: ev.target.value } });
+    etat.territoires = null;
+    etat.entreprise = null;
+    noter('Territoire enregistré : les taux proposés suivent.', 'succes');
+    chargerEntreprise();
+  } catch (e) { noter(e.message, 'erreur'); }
+});
+
+document.addEventListener('click', async (ev) => {
+  const applique = ev.target.closest('[data-territoire]');
+  if (applique) {
+    await api('/entreprise', { method: 'PUT', body: { territoire: applique.dataset.territoire } });
+    etat.territoires = null;
+    etat.entreprise = null;
+    noter('Territoire appliqué.', 'succes');
+    return chargerEntreprise();
+  }
+  const carte = ev.target.closest('[data-regime]');
+  if (!carte) return;
+  const champRegime = $('#e-regime_tva');
+  if (champRegime) champRegime.value = carte.dataset.regime;
+  try {
+    await api('/entreprise', { method: 'PUT', body: { regime_tva: carte.dataset.regime } });
+    etat.entreprise = null;
+    noter(carte.dataset.regime === 'franchise'
+      ? 'Régime enregistré : vos factures ne porteront pas de TVA.'
+      : 'Régime enregistré : la TVA apparaîtra sur vos factures.', 'succes');
+    chargerEntreprise();
+  } catch (e) { noter(e.message, 'erreur'); }
+  return undefined;
+});
+
 document.addEventListener('submit', async (ev) => {
   if (ev.target.id === 'form-entreprise') {
     ev.preventDefault();
@@ -585,7 +833,7 @@ document.addEventListener('submit', async (ev) => {
 document.addEventListener('click', async (ev) => {
   if (ev.target.id === 'ajouter-ligne') {
     lireLignes();
-    brouillon.lignes.push({ designation: '', quantite: 1, prix_ht: 0, tva_taux: 20 });
+    brouillon.lignes.push({ designation: '', quantite: 1, prix_ht: 0, tva_taux: tauxHabituel() });
     dessinerLignes();
     rafraichirRecap();
   }
@@ -663,7 +911,9 @@ function formulaireArticle() {
     <div class="champ"><label>Unité</label>
       <select name="unite">${['heure', 'jour', 'forfait', 'piece', 'mois'].map((u) => `<option>${u}</option>`).join('')}</select></div>
     <div class="champ"><label>Prix HT</label><input name="prix_ht" type="number" step="0.01" value="0"></div>
-    <div class="champ"><label>TVA %</label><input name="tva_taux" type="number" step="0.1" value="20"></div>
+    ${tauxHabituel() === 0
+      ? '<input type="hidden" name="tva_taux" value="0">'
+      : `<div class="champ"><label>TVA %</label><input name="tva_taux" type="number" step="0.1" value="${tauxHabituel()}"></div>`}
   </form>`;
   $('#tiroir-pied').innerHTML = `<button class="bouton discret" id="btn-annuler">Annuler</button>
     <button class="bouton primaire" id="btn-article-ok">Ajouter</button>`;

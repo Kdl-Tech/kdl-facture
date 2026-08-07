@@ -160,7 +160,16 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
   y = doc.y + 22;
 
   // — Tableau des lignes —
-  const colonnes = [
+  // En franchise de TVA, la colonne du taux disparaît : afficher « 0 % »
+  // partout n'informe personne et laisse croire à un oubli. Les montants
+  // s'écrivent alors sans mention « HT », qui n'a plus de sens.
+  const franchise = entreprise.regime_tva === 'franchise';
+  const colonnes = franchise ? [
+    { titre: 'DÉSIGNATION', x: G, w: largeur - 260, align: 'left' },
+    { titre: 'QTÉ', x: D - 260, w: 54, align: 'right' },
+    { titre: 'PRIX UNITAIRE', x: D - 206, w: 96, align: 'right' },
+    { titre: 'TOTAL', x: D - 110, w: 110, align: 'right' },
+  ] : [
     { titre: 'DÉSIGNATION', x: G, w: largeur - 300, align: 'left' },
     { titre: 'QTÉ', x: D - 300, w: 44, align: 'right' },
     { titre: 'P.U. HT', x: D - 252, w: 62, align: 'right' },
@@ -196,8 +205,11 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
     doc.text(l.designation, colonnes[0].x + 4, y + 5, { width: colonnes[0].w - 8 });
     doc.text(`${Number(l.quantite)} ${l.unite || ''}`.trim(), colonnes[1].x + 4, y + 5, { width: colonnes[1].w - 8, align: 'right' });
     doc.text(eur(l.prix_ht), colonnes[2].x + 4, y + 5, { width: colonnes[2].w - 8, align: 'right' });
-    doc.text(`${Number(l.tva_taux)} %`, colonnes[3].x + 4, y + 5, { width: colonnes[3].w - 8, align: 'right' });
-    doc.font('Helvetica-Bold').text(eur(l.montant_ht), colonnes[4].x + 4, y + 5, { width: colonnes[4].w - 8, align: 'right' });
+    if (!franchise) {
+      doc.text(`${Number(l.tva_taux)} %`, colonnes[3].x + 4, y + 5, { width: colonnes[3].w - 8, align: 'right' });
+    }
+    const colTotal = colonnes[colonnes.length - 1];
+    doc.font('Helvetica-Bold').text(eur(l.montant_ht), colTotal.x + 4, y + 5, { width: colTotal.w - 8, align: 'right' });
     doc.font('Helvetica');
 
     if (l.remise_pct > 0) {
@@ -222,13 +234,17 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
     y += gras ? 16 : 14;
   };
 
-  ligneTotal('Total HT', eur(totaux.total_ht));
-  for (const v of totaux.ventilation_tva) {
-    ligneTotal(`TVA ${Number(v.taux)} % sur ${eur(v.base_ht)}`, eur(v.montant_tva), false, GRIS);
+  if (franchise) {
+    ligneTotal('Total', eur(totaux.total_ht), true);
+  } else {
+    ligneTotal('Total HT', eur(totaux.total_ht));
+    for (const v of totaux.ventilation_tva) {
+      ligneTotal(`TVA ${Number(v.taux)} % sur ${eur(v.base_ht)}`, eur(v.montant_tva), false, GRIS);
+    }
+    doc.moveTo(xTot, y).lineTo(D, y).lineWidth(0.6).strokeColor(TRAIT).stroke();
+    y += 6;
+    ligneTotal('Total TTC', eur(totaux.total_ttc), true);
   }
-  doc.moveTo(xTot, y).lineTo(D, y).lineWidth(0.6).strokeColor(TRAIT).stroke();
-  y += 6;
-  ligneTotal('Total TTC', eur(totaux.total_ttc), true);
 
   if (totaux.acompte > 0) {
     ligneTotal('Acompte déjà versé', `− ${eur(totaux.acompte)}`, false, GRIS);
@@ -250,6 +266,10 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
   const motif = motifExoneration(categorie, entreprise);
   const mentions = [
     motif,
+    franchise && entreprise.forme_juridique.toLowerCase().includes('micro')
+      ? 'Dispensé d’immatriculation au registre du commerce et des sociétés (RCS) et au répertoire des métiers (RM).'
+      : '',
+    entreprise.assurance_pro ? `Assurance professionnelle : ${entreprise.assurance_pro}.` : '',
     document.mode_paiement === 'virement' && entreprise.iban
       ? `Paiement par virement — IBAN ${entreprise.iban}${entreprise.bic ? ` · BIC ${entreprise.bic}` : ''}`
       : `Mode de paiement : ${document.mode_paiement}`,

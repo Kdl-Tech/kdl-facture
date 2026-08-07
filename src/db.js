@@ -75,7 +75,42 @@ function ouvrir(cheminBase) {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   creerSchema(db);
+  migrer(db);
   return db;
+}
+
+/**
+ * Migration douce des bases existantes.
+ *
+ * `CREATE TABLE IF NOT EXISTS` ne touche pas une table déjà là : une base
+ * ouverte avec une version antérieure garderait ses anciennes colonnes, et le
+ * logiciel planterait sur la première écriture. On ajoute donc ce qui manque,
+ * sans jamais rien supprimer — les données de facturation ne se perdent pas.
+ */
+function migrer(db) {
+  const AJOUTS = {
+    entreprises: {
+      seuil_franchise: 'REAL NOT NULL DEFAULT 0',
+      tva_taux_defaut: 'REAL NOT NULL DEFAULT 20',
+      territoire: "TEXT NOT NULL DEFAULT 'metropole'",
+      activite: "TEXT NOT NULL DEFAULT 'services'",
+      assurance_pro: "TEXT NOT NULL DEFAULT ''",
+      logo_path: "TEXT NOT NULL DEFAULT ''",
+    },
+  };
+  for (const [table, colonnes] of Object.entries(AJOUTS)) {
+    let existantes;
+    try {
+      existantes = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    } catch {
+      continue;
+    }
+    for (const [nom, definition] of Object.entries(colonnes)) {
+      if (!existantes.includes(nom)) {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${nom} ${definition}`);
+      }
+    }
+  }
 }
 
 function creerSchema(db) {
@@ -97,8 +132,21 @@ CREATE TABLE IF NOT EXISTS entreprises (
   telephone TEXT NOT NULL DEFAULT '',
   iban TEXT NOT NULL DEFAULT '',
   bic TEXT NOT NULL DEFAULT '',
-  -- Régime de TVA : 'normal' ou 'franchise' (art. 293 B du CGI).
-  regime_tva TEXT NOT NULL DEFAULT 'normal',
+  -- Régime de TVA : 'franchise' (art. 293 B du CGI) ou 'normal'.
+  -- La franchise est le défaut : c'est le régime d'une entreprise qui démarre,
+  -- et forcer quelqu'un à décocher la TVA qu'il ne facture pas est une faute
+  -- d'ergonomie autant qu'un risque d'erreur.
+  regime_tva TEXT NOT NULL DEFAULT 'franchise',
+  -- Suivi du plafond de franchise : montant paramétrable, jamais deviné.
+  seuil_franchise REAL NOT NULL DEFAULT 0,
+  -- Taux appliqué d'office aux nouvelles lignes quand la TVA s'applique.
+  tva_taux_defaut REAL NOT NULL DEFAULT 20,
+  -- Territoire fiscal : la TVA n'est pas la même partout en France.
+  -- metropole | guadeloupe | martinique | reunion | guyane | mayotte | corse
+  territoire TEXT NOT NULL DEFAULT 'metropole',
+  -- Activité : sert aux mentions propres aux micro-entrepreneurs.
+  activite TEXT NOT NULL DEFAULT 'services',
+  assurance_pro TEXT NOT NULL DEFAULT '',
   -- Option pour le paiement de la TVA d'après les débits : mention obligatoire.
   tva_sur_debits INTEGER NOT NULL DEFAULT 0,
   penalites_taux REAL NOT NULL DEFAULT 10.0,
@@ -144,7 +192,7 @@ CREATE TABLE IF NOT EXISTS articles (
   nature TEXT NOT NULL DEFAULT 'service',        -- service | bien
   unite TEXT NOT NULL DEFAULT 'heure',
   prix_ht REAL NOT NULL DEFAULT 0,
-  tva_taux REAL NOT NULL DEFAULT 20,
+  tva_taux REAL NOT NULL DEFAULT 0,
   actif INTEGER NOT NULL DEFAULT 1
 );
 
@@ -182,7 +230,7 @@ CREATE TABLE IF NOT EXISTS lignes (
   quantite REAL NOT NULL DEFAULT 1,
   prix_ht REAL NOT NULL DEFAULT 0,
   remise_pct REAL NOT NULL DEFAULT 0,
-  tva_taux REAL NOT NULL DEFAULT 20
+  tva_taux REAL NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS paiements (
@@ -223,4 +271,4 @@ CREATE INDEX IF NOT EXISTS idx_paiements_document ON paiements(document_id);
 `);
 }
 
-module.exports = { ouvrir, creerSchema, cheminParDefaut, moteur };
+module.exports = { ouvrir, creerSchema, migrer, cheminParDefaut, moteur };

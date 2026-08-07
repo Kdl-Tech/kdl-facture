@@ -233,6 +233,11 @@ h2 { font-size: 17px; margin: 0; }
 .lignes-tete, .ligne-saisie {
   display: grid; grid-template-columns: 1fr 78px 96px 76px 92px 34px; gap: 8px; align-items: center;
 }
+/* En franchise de TVA, la colonne du taux n'existe pas : la grille se resserre
+   au lieu de laisser un trou. */
+.lignes-tete.sans-tva, .ligne-saisie.sans-tva {
+  grid-template-columns: 1fr 78px 110px 100px 34px;
+}
 .lignes-tete { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--sourdine); margin-bottom: 6px; }
 .ligne-saisie { margin-bottom: 7px; }
 .ligne-saisie input, .ligne-saisie select {
@@ -273,3 +278,73 @@ h2 { font-size: 17px; margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ─── Choix du régime de TVA ───
+   C'est le réglage qui commande tout le reste : il mérite deux vraies cartes
+   plutôt qu'une ligne de menu déroulant perdue dans un formulaire. */
+.regime {
+  background: var(--panneau); border: 1px solid var(--trait); border-radius: var(--r);
+  padding: 18px 20px; margin-bottom: 22px; display: flex; flex-direction: column; gap: 14px;
+}
+.regime-question strong { display: block; font-size: 15px; }
+.regime-question span { color: var(--sourdine); font-size: 13px; }
+.regime-choix { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.regime-carte {
+  text-align: left; background: #0b1017; border: 1.5px solid var(--trait);
+  border-radius: 11px; padding: 14px 16px; cursor: pointer; font: inherit;
+  color: var(--encre); display: flex; flex-direction: column; gap: 5px;
+  transition: border-color .15s, background .15s;
+}
+.regime-carte:hover { border-color: var(--bleu); }
+.regime-carte.actif { border-color: var(--cyan); background: rgba(56, 189, 248, .08); }
+.regime-carte.actif .regime-titre::after {
+  content: " ✓"; color: var(--cyan);
+}
+.regime-titre { font-weight: 700; font-size: 14px; }
+.regime-detail { color: var(--sourdine); font-size: 12.5px; line-height: 1.45; }
+
+/* ─── Références officielles ─── */
+.ref-bloc { margin-bottom: 26px; }
+.ref-theme {
+  font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--cyan); margin: 0 0 10px; font-weight: 700;
+}
+.ref-carte { text-decoration: none; color: inherit; transition: border-color .15s, transform .1s; }
+.ref-carte:hover { border-color: var(--cyan); transform: translateY(-1px); }
+.ref-carte .titre::after { content: " ↗"; color: var(--sourdine); font-size: 12px; }
+
+.lien-inline {
+  background: none; border: 0; color: var(--cyan); font: inherit; font-size: inherit;
+  text-decoration: underline; cursor: pointer; padding: 0;
+}
+
+/* ─── Territoires fiscaux ─── */
+.zone-groupe { margin-top: 14px; }
+.zone-titre {
+  font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--sourdine); margin: 0 0 8px; font-weight: 700;
+}
+.zone-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.zone-carte {
+  background: #0b1017; border: 1.5px solid var(--trait); border-radius: 10px;
+  padding: 10px 12px; cursor: pointer; font: inherit; color: var(--encre);
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  transition: border-color .15s, background .15s;
+}
+.zone-carte:hover { border-color: var(--bleu); }
+.zone-carte.actif { border-color: var(--cyan); background: rgba(56, 189, 248, .09); }
+.zone-nom { font-weight: 600; font-size: 13.5px; }
+.zone-taux { font-size: 11.5px; color: var(--sourdine); font-variant-numeric: tabular-nums; }
+.zone-taux.sans { color: var(--ambre); }
+.zone-fiche {
+  margin-top: 16px; padding: 14px 16px; background: #0b1017;
+  border: 1px solid var(--trait); border-left: 3px solid var(--cyan); border-radius: 0 10px 10px 0;
+}
+.zone-fiche-tete { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.zone-liste + .zone-liste { margin-top: 10px; }
+.zone-liste-titre {
+  font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--sourdine); font-weight: 700;
+}
+.zone-liste ul { margin: 5px 0 0; padding-left: 18px; font-size: 13px; color: #b9c6d3; }
+.zone-liste li { margin-bottom: 3px; }

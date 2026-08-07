@@ -8,10 +8,13 @@ const { Service, ErreurMetier } = require('../src/factures');
 function preparer() {
   const db = ouvrir(':memory:');
   const service = new Service(db);
+  // Cette entreprise de test facture avec TVA : il faut le dire, puisque la
+  // franchise est désormais le régime par défaut.
   const ent = db.prepare(`
-    INSERT INTO entreprises (nom, siren, siret, tva_intra, adresse, code_postal, ville, iban)
+    INSERT INTO entreprises (nom, siren, siret, tva_intra, adresse, code_postal, ville, iban, regime_tva)
     VALUES ('KDL TECH', '123456789', '12345678900019', 'FR12123456789',
-            '1 rue des Palmiers', '97100', 'Basse-Terre', 'FR7630001007941234567890185')
+            '1 rue des Palmiers', '97100', 'Basse-Terre',
+            'FR7630001007941234567890185', 'normal')
   `).run();
   const cli = db.prepare(`
     INSERT INTO clients (entreprise_id, type, nom, siren, siret, adresse, code_postal, ville, delai_paiement_jours)

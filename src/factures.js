@@ -346,6 +346,62 @@ class Service {
     };
   }
 
+  /**
+   * Chiffre d'affaires encaissé sur l'année civile.
+   *
+   * En micro-entreprise, ce qui compte est l'argent **encaissé**, pas facturé :
+   * c'est lui qui sert à la déclaration URSSAF et au suivi du plafond de
+   * franchise de TVA. Une facture émise en décembre et payée en janvier
+   * appartient à l'année du paiement.
+   */
+  chiffreAffairesEncaisse(entrepriseId, annee) {
+    const an = annee || new Date().getFullYear();
+    const ligne = this.db.prepare(`
+      SELECT COALESCE(SUM(p.montant), 0) AS total
+      FROM paiements p
+      JOIN documents d ON d.id = p.document_id
+      WHERE d.entreprise_id = ? AND d.type != 'avoir'
+        AND substr(p.date, 1, 4) = ?
+    `).get(entrepriseId, String(an));
+    const avoirs = this.db.prepare(`
+      SELECT COALESCE(SUM(p.montant), 0) AS total
+      FROM paiements p
+      JOIN documents d ON d.id = p.document_id
+      WHERE d.entreprise_id = ? AND d.type = 'avoir'
+        AND substr(p.date, 1, 4) = ?
+    `).get(entrepriseId, String(an));
+    return Math.round((ligne.total - avoirs.total) * 100) / 100;
+  }
+
+  /**
+   * Où en est-on du plafond de franchise de TVA.
+   *
+   * Le montant du plafond n'est pas inscrit en dur : il change au gré des lois
+   * de finances, et un chiffre faux serait pire que pas de chiffre du tout.
+   * Il se renseigne dans les réglages ; tant qu'il vaut zéro, on se contente
+   * d'afficher le chiffre d'affaires sans jugement.
+   */
+  suiviFranchise(entrepriseId) {
+    const entreprise = this.entreprise(entrepriseId);
+    if (!entreprise || entreprise.regime_tva !== 'franchise') return null;
+    const annee = new Date().getFullYear();
+    const encaisse = this.chiffreAffairesEncaisse(entrepriseId, annee);
+    const seuil = Number(entreprise.seuil_franchise) || 0;
+    if (!seuil) {
+      return { annee, encaisse, seuil: 0, renseigne: false };
+    }
+    const part = encaisse / seuil;
+    return {
+      annee,
+      encaisse,
+      seuil,
+      restant: Math.round((seuil - encaisse) * 100) / 100,
+      pourcentage: Math.round(part * 1000) / 10,
+      renseigne: true,
+      alerte: part >= 1 ? 'depasse' : (part >= 0.8 ? 'proche' : null),
+    };
+  }
+
   /** Les factures échues et non soldées, les plus anciennes d'abord. */
   impayes(entrepriseId) {
     const aujourdhui = new Date().toISOString().slice(0, 10);
