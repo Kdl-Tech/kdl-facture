@@ -5,3 +5,4 @@ src/ressources-embarquees.js
 data/
 *.db
 *.db-*
+src/licence-secret.js

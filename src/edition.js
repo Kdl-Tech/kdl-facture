@@ -10,8 +10,8 @@
  *
  * Édition Découverte, gratuite et sans inscription :
  *   - 15 factures par année civile,
- *   - un seul client au catalogue... non : autant de clients qu'on veut, mais
- *     le catalogue de prestations est réservé au Pro,
+ *   - autant de clients qu'on veut, mais le catalogue de prestations est
+ *     réservé au Pro,
  *   - PDF Factur-X complet, conforme, sans filigrane ni mention publicitaire,
  *   - une seule entreprise.
  *
@@ -68,12 +68,25 @@ const CAPACITES = {
 /**
  * Le secret qui signe les licences.
  *
- * Il est dans le binaire : quelqu'un de déterminé le trouvera. Ce n'est pas un
- * système anticopie — c'en serait un mauvais — mais une barrière honnête, qui
- * empêche de fabriquer une clé au hasard sans empêcher un client légitime de
- * réinstaller son logiciel.
+ * Il ne vit pas dans le dépôt : `src/licence-secret.js` n'est pas versionné, et
+ * sans lui le code retombe sur une valeur publique. Une compilation faite à
+ * partir des sources publiques produit donc des clés valables pour elle-même,
+ * jamais pour les binaires distribués par KDL TECH.
+ *
+ * Ce n'est pas un système anticopie — c'en serait un mauvais, et quelqu'un de
+ * déterminé extraira toujours le secret d'un binaire. C'est une barrière
+ * honnête : elle empêche de fabriquer une clé au hasard sans jamais empêcher un
+ * client légitime de réinstaller son logiciel.
  */
-const SEL = 'KDL-FACTURE-2026';
+function selDeSignature() {
+  try {
+    // eslint-disable-next-line global-require, import/no-unresolved
+    return require('./licence-secret').SEL;
+  } catch {
+    return 'KDL-FACTURE-SOURCE-PUBLIQUE';
+  }
+}
+const SEL = selDeSignature();
 
 /** Fabrique une clé de licence pour un titulaire donné. */
 function creerCle(titulaire, edition = PRO) {

@@ -100,6 +100,32 @@ bundle.
 
 ---
 
+## Éditions
+
+| | Découverte | Pro |
+|---|---|---|
+| Prix | gratuit | 49 € une fois |
+| Factures Factur-X conformes | ✓ | ✓ |
+| Journal inaltérable, avoirs | ✓ | ✓ |
+| Tous les territoires et régimes de TVA | ✓ | ✓ |
+| Factures par année civile | 15 | illimitées |
+| Catalogue, devis, acomptes | — | ✓ |
+| Export comptable, suivi du plafond | — | ✓ |
+| Plusieurs entreprises | — | ✓ |
+
+**Ce qui rend une facture conforme reste gratuit.** Une TPE ne doit pas payer
+pour respecter la loi : Découverte produit des factures pleinement valides, sans
+filigrane ni mention publicitaire. Ce qui se paie, c'est le volume et le confort.
+
+La licence est un fichier signé posé à côté des données. Aucune activation en
+ligne, aucun abonnement : le logiciel tourne sur une machine sans Internet.
+
+## Licence
+
+Source visible — voir [LICENCE.md](LICENCE.md). Vous pouvez lire, auditer,
+compiler et utiliser ; vous ne pouvez pas revendre. Le code d'un logiciel qui
+calcule vos factures ne devrait pas être une boîte noire.
+
 ## Sources
 
 Les règles appliquées viennent des textes officiels, listés dans l'onglet
