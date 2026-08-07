@@ -92,24 +92,27 @@ async function chargerBrief() {
   ecrire($('#brief-texte'), texte, true);
 
   const franchise = d.entreprise.regime_tva === 'franchise';
+  const f = d.franchise;
+
+  // Un seul compteur d'encaissement, pas deux. En franchise, celui qui compte
+  // est l'encaissé de l'année civile — c'est lui qui sert à l'URSSAF et au
+  // suivi du plafond ; le cumul de tous les temps n'apprend rien.
+  const encaisse = f
+    ? {
+      v: eur(f.encaisse),
+      e: f.renseigne
+        ? `Encaissé en ${f.annee} — ${f.pourcentage} % du plafond`
+        : `Encaissé en ${f.annee}`,
+      c: f.alerte === 'depasse' ? 'c-rouge' : (f.alerte === 'proche' ? 'c-ambre' : 'c-vert'),
+    }
+    : { v: eur(stats.encaisse), e: 'Encaissé', c: 'c-vert' };
+
   const compteurs = [
+    encaisse,
     { v: eur(stats.chiffre_affaires_ttc), e: franchise ? 'Facturé' : 'Facturé TTC', c: '' },
-    { v: eur(stats.encaisse), e: 'Encaissé', c: 'c-vert' },
     { v: eur(stats.reste_du), e: 'Reste à encaisser', c: stats.reste_du > 0 ? 'c-ambre' : '' },
     { v: eur(stats.en_retard), e: 'En retard', c: stats.en_retard > 0 ? 'c-rouge' : '' },
   ];
-  // En franchise, le chiffre qui compte vraiment est l'encaissé de l'année :
-  // c'est lui qui sert à l'URSSAF et au suivi du plafond de TVA.
-  if (d.franchise) {
-    const f = d.franchise;
-    compteurs.unshift(f.renseigne
-      ? {
-        v: eur(f.encaisse),
-        e: `Encaissé ${f.annee} — ${f.pourcentage} % du plafond`,
-        c: f.alerte === 'depasse' ? 'c-rouge' : (f.alerte === 'proche' ? 'c-ambre' : 'c-vert'),
-      }
-      : { v: eur(f.encaisse), e: `Encaissé en ${f.annee}`, c: 'c-vert' });
-  }
   $('#compteurs').innerHTML = compteurs
     .map((c) => `<div class="compteur ${c.c}"><div class="valeur">${c.v}</div><div class="etiquette">${c.e}</div></div>`).join('');
 
