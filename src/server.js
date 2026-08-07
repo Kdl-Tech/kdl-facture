@@ -10,7 +10,7 @@
 
 const express = require('express');
 const path = require('node:path');
-const { ouvrir } = require('./db');
+const { ouvrir, cheminParDefaut } = require('./db');
 const { creerApi } = require('./api');
 
 const PORT = Number(process.env.KDL_FACTURE_PORT) || 4310;
