@@ -75,7 +75,7 @@ Les données vivent dans un seul fichier SQLite, à sauvegarder :
 
 ```bash
 npm install          # dépendances
-npm test             # 44 tests, sans réseau ni base sur disque
+npm test             # 68 tests, sans réseau ni base sur disque
 npm start            # serveur local sur le port 4310
 node build/construire.mjs   # les trois exécutables
 ```
