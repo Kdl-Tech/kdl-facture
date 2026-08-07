@@ -1,3 +1,5 @@
+**Français** · [English](README.en.md)
+
 # KDL Facture
 
 Facturation électronique française, conforme à la réforme. Un exécutable par
@@ -5,6 +7,8 @@ système, aucune installation, les données restent sur la machine.
 
 Développé par **KDL TECH** — maintenance informatique, développement web,
 cybersécurité.
+
+![Tableau de bord de KDL Facture : brief du jour, encaissé et facturé de l'année, reste à encaisser et impayés, avec la navigation par factures, clients, catalogue et journal](docs/interface.png)
 
 ---
 
@@ -75,7 +79,7 @@ Les données vivent dans un seul fichier SQLite, à sauvegarder :
 
 ```bash
 npm install          # dépendances
-npm test             # 68 tests, sans réseau ni base sur disque
+npm test             # 69 tests, sans réseau ni base sur disque
 npm start            # serveur local sur le port 4310
 node build/construire.mjs   # les trois exécutables
 ```
