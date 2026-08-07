@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="sombre">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KDL Facture</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<aside class="rail">
+  <div class="marque">
+    <img src="logo-kdl.png" alt="KDL TECH" class="logo">
+    <div><strong>KDL Facture</strong><small>Facturation électronique</small></div>
+  </div>
+  <nav id="nav">
+    <button class="onglet actif" data-vue="brief"><span>◈</span> Brief</button>
+    <button class="onglet" data-vue="documents"><span>▤</span> Factures</button>
+    <button class="onglet" data-vue="clients"><span>◉</span> Clients</button>
+    <button class="onglet" data-vue="articles"><span>≡</span> Catalogue</button>
+    <button class="onglet" data-vue="entreprise"><span>⚑</span> Mon entreprise</button>
+    <button class="onglet" data-vue="journal"><span>⛓</span> Journal</button>
+  </nav>
+  <div class="rail-pied">
+    <button class="lien-discret" id="btn-export">Export comptable</button>
+    <div class="version">v0.1 · local</div>
+  </div>
+</aside>
+
+<main id="scene">
+
+  <!-- ═══ BRIEF ═══ -->
+  <section class="vue active" id="vue-brief">
+    <header class="entete">
+      <div>
+        <div class="sur-titre" id="brief-date">—</div>
+        <h1 id="brief-titre">Bonsoir.</h1>
+      </div>
+      <button class="bouton primaire" data-action="nouvelle-facture">Nouvelle facture</button>
+    </header>
+
+    <p class="brief-texte" id="brief-texte"></p>
+
+    <div class="compteurs" id="compteurs"></div>
+
+    <div class="pile" id="pile-actions"></div>
+
+    <div class="orbe-zone" id="orbe-zone" hidden>
+      <div class="orbe"></div>
+      <h2>Qu'est-ce qu'on enchaîne ?</h2>
+      <div class="orbe-choix">
+        <button class="bouton" data-action="nouvelle-facture">Facturer un client</button>
+        <button class="bouton" data-vue="documents">Voir toutes les factures</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ DOCUMENTS ═══ -->
+  <section class="vue" id="vue-documents">
+    <header class="entete">
+      <div><div class="sur-titre">Documents</div><h1>Factures, devis et avoirs</h1></div>
+      <button class="bouton primaire" data-action="nouvelle-facture">Nouvelle facture</button>
+    </header>
+    <div class="filtres" id="filtres-documents">
+      <button class="puce actif" data-filtre="">Tous</button>
+      <button class="puce" data-filtre="brouillon">Brouillons</button>
+      <button class="puce" data-filtre="emis">À encaisser</button>
+      <button class="puce" data-filtre="paye">Payées</button>
+    </div>
+    <div class="tableau-enveloppe"><table class="tableau" id="table-documents"></table></div>
+  </section>
+
+  <!-- ═══ CLIENTS ═══ -->
+  <section class="vue" id="vue-clients">
+    <header class="entete">
+      <div><div class="sur-titre">Carnet</div><h1>Clients</h1></div>
+      <button class="bouton primaire" data-action="nouveau-client">Ajouter un client</button>
+    </header>
+    <div class="tableau-enveloppe"><table class="tableau" id="table-clients"></table></div>
+  </section>
+
+  <!-- ═══ ARTICLES ═══ -->
+  <section class="vue" id="vue-articles">
+    <header class="entete">
+      <div><div class="sur-titre">Catalogue</div><h1>Prestations et produits</h1></div>
+      <button class="bouton primaire" data-action="nouvel-article">Ajouter</button>
+    </header>
+    <div class="tableau-enveloppe"><table class="tableau" id="table-articles"></table></div>
+  </section>
+
+  <!-- ═══ ENTREPRISE ═══ -->
+  <section class="vue" id="vue-entreprise">
+    <header class="entete">
+      <div><div class="sur-titre">Paramètres</div><h1>Mon entreprise</h1></div>
+    </header>
+    <p class="aide">Ces informations partent dans chaque facture, et dans le fichier XML que lira le logiciel de votre client. Une erreur ici se retrouve partout.</p>
+    <form id="form-entreprise" class="formulaire"></form>
+  </section>
+
+  <!-- ═══ JOURNAL ═══ -->
+  <section class="vue" id="vue-journal">
+    <header class="entete">
+      <div><div class="sur-titre">Preuve</div><h1>Journal inaltérable</h1></div>
+    </header>
+    <p class="aide">Chaque acte est écrit ici et porte l'empreinte du précédent. Retirer ou modifier une ligne casse la chaîne — et cela se voit.</p>
+    <div id="etat-journal"></div>
+    <div class="tableau-enveloppe"><table class="tableau" id="table-journal"></table></div>
+  </section>
+
+</main>
+
+<!-- ═══ TIROIR D'ÉDITION ═══ -->
+<div class="voile" id="voile" hidden></div>
+<aside class="tiroir" id="tiroir" hidden>
+  <header class="tiroir-entete">
+    <h2 id="tiroir-titre">Facture</h2>
+    <button class="icone" id="tiroir-fermer" aria-label="Fermer">✕</button>
+  </header>
+  <div class="tiroir-corps" id="tiroir-corps"></div>
+  <footer class="tiroir-pied" id="tiroir-pied"></footer>
+</aside>
+
+<div id="notes"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

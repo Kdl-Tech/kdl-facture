@@ -1,0 +1,23 @@
+{
+  "name": "kdl-facture",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Facturation électronique française — Factur-X, conforme à la réforme B2B",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.21.0",
+    "pdfkit": "^0.15.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "postject": "^1.0.0-alpha.6"
+  }
+}

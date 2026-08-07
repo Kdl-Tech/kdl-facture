@@ -1,0 +1,7 @@
+node_modules/
+build/runtimes/
+build/travail/
+src/ressources-embarquees.js
+data/
+*.db
+*.db-*
