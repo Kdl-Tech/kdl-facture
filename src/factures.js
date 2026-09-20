@@ -8,7 +8,7 @@
  * 1. Une facture émise ne bouge plus. Pas de correction discrète, pas de
  *    renumérotation : une erreur se répare par un avoir, qui laisse la trace
  *    des deux documents. C'est ce que l'administration attend, et c'est aussi
- *    ce qui protège Karim en cas de contrôle.
+ *    ce qui protège l'éditeur en cas de contrôle.
  * 2. La numérotation est continue et sans trou. Le numéro n'est attribué qu'à
  *    l'émission — un brouillon abandonné ne consomme rien.
  */

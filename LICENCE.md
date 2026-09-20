@@ -1,6 +1,6 @@
 # Licence KDL Facture
 
-Copyright © 2026 KDL TECH — Karim DeLucia. Tous droits réservés.
+Copyright © 2026 KDL TECH. Tous droits réservés.
 
 Ce logiciel est **à source visible** : le code est publié pour être lu, vérifié
 et critiqué. Un logiciel qui calcule vos factures et prétend les rendre

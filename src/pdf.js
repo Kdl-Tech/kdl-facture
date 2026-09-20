@@ -170,7 +170,7 @@ function dessiner(doc, { document, entreprise, client, lignes, paiements, totaux
 
   // — En-tête : logo et émetteur à gauche, nature du document à droite —
   // Le logo de l'entreprise s'il en a un, sinon celui de KDL TECH : le
-  // logiciel sert aussi les clients de Karim, et leur facture porte leur nom.
+  // logiciel sert aussi les clients de l'éditeur, et leur facture porte leur nom.
   let decalageTitre = G;
   try {
     const logo = lireLogo(entreprise.logo_path);

@@ -2,7 +2,7 @@
 
 /**
  * L'API HTTP. Elle ne parle qu'en loopback : ce logiciel garde les données
- * comptables de Karim et de ses clients sur leur propre machine, et rien ne
+ * comptables de l'éditeur et de ses clients sur leur propre machine, et rien ne
  * sort sans une action explicite.
  */
 

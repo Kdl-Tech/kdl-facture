@@ -8,7 +8,7 @@
  * corrige par un avoir, jamais par une réécriture. Les brouillons, eux, vivent
  * librement tant qu'ils n'ont pas de numéro.
  *
- * Multi-entreprises dès le départ : Karim facture pour KDL TECH, et chacun de
+ * Multi-entreprises dès le départ : l'éditeur facture pour KDL TECH, et chacun de
  * ses clients qui installe le logiciel facture pour la sienne. Rien n'est
  * codé en dur au nom d'une société.
  */
