@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#123C63">
+<meta name="description" content="Recevoir et émettre des factures électroniques Factur-X conformes EN 16931, sur votre machine, sans compte et sans serveur.">
+<title>KDL Facture</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icone-192.png">
+<link rel="apple-touch-icon" href="./icone-192.png">
+<script>
+/*
+ * Charte « Lagon » KDL TECH : clair par défaut, ne suit jamais le système.
+ * Le thème est posé avant le premier affichage pour éviter le flash.
+ */
+try {
+  document.documentElement.setAttribute('data-theme', localStorage.getItem('kdl-theme') === 'dark' ? 'dark' : 'light');
+} catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+</script>
+<link rel="stylesheet" href="./kdl-theme.css">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<header class="entete">
+  <span class="kdl-logo"><img src="./icone-192.png" alt=""></span>
+  <div>
+    <h1>KDL Facture</h1>
+    <span class="version" id="version">—</span>
+  </div>
+  <div class="espace"></div>
+  <nav class="onglets" role="tablist">
+    <button class="onglet" role="tab" aria-selected="true" data-vue="reception">Factures reçues</button>
+    <button class="onglet" role="tab" aria-selected="false" data-vue="emission">Émettre</button>
+    <button class="onglet" role="tab" aria-selected="false" data-vue="clients">Clients</button>
+    <button class="onglet" role="tab" aria-selected="false" data-vue="recap">Récapitulatif</button>
+    <button class="onglet" role="tab" aria-selected="false" data-vue="donnees">Mes données</button>
+  </nav>
+  <span data-kdl-theme-btn></span>
+</header>
+
+<main>
+  <section id="vue-reception">
+    <div class="resume" id="resume"></div>
+
+    <div class="depot" id="depot" tabindex="0" role="button"
+         aria-label="Déposer une facture reçue">
+      <div class="geste">Déposez ici les factures reçues</div>
+      <div class="detail">
+        PDF Factur-X, XML CII ou UBL — plusieurs fichiers à la fois.
+        Rien ne quitte cet appareil.
+      </div>
+      <input type="file" id="fichiers" multiple accept=".pdf,.xml,application/pdf,text/xml,application/xml">
+    </div>
+
+    <div class="barre-liste">
+      <h2>Factures reçues</h2>
+      <div class="espace"></div>
+      <input type="search" id="recherche" placeholder="Chercher un fournisseur…" aria-label="Chercher un fournisseur">
+      <select id="filtre-statut" aria-label="Filtrer par statut">
+        <option value="">Tous les statuts</option>
+        <option value="recue">Reçues</option>
+        <option value="approuvee">Approuvées</option>
+        <option value="en_paiement">Mises en paiement</option>
+        <option value="encaissee">Payées</option>
+        <option value="rejetee">Rejetées</option>
+      </select>
+    </div>
+
+    <div id="liste"></div>
+  </section>
+
+  <section id="vue-emission" hidden></section>
+
+  <section id="vue-clients" hidden></section>
+  <section id="vue-recap" hidden></section>
+
+  <section id="vue-donnees" hidden>
+    <div class="carte" style="margin-bottom:14px">
+      <div class="titre">Vos données</div>
+      <p style="margin:.4em 0 1em">
+        Tout est enregistré sur cet appareil, dans le stockage local du navigateur.
+        Aucun compte, aucun serveur, aucun envoi. En contrepartie, <strong>vider les
+        données du site effacerait tout</strong> : gardez une sauvegarde à jour.
+      </p>
+      <div class="suite">
+        <button class="premier" id="exporter">Enregistrer une sauvegarde</button>
+        <button id="importer">Restaurer une sauvegarde</button>
+        <input type="file" id="fichier-sauvegarde" accept=".json,application/json" hidden>
+      </div>
+      <p id="etat-stockage" class="detail" style="color:var(--texte-doux);margin-top:14px;font-size:13.5px"></p>
+    </div>
+
+    <div class="carte" style="margin-bottom:14px">
+      <div class="titre">Édition</div>
+      <p style="margin:.4em 0 1em" id="etat-licence">—</p>
+      <div class="grille">
+        <label class="large">Clé de licence
+          <input type="text" id="cle-licence" placeholder="Collez ici la clé reçue à l'achat">
+        </label>
+      </div>
+      <div class="suite" style="margin-top:12px">
+        <button class="premier" id="activer-licence">Activer</button>
+        <button class="discret" id="retirer-licence">Retirer la licence</button>
+      </div>
+    </div>
+
+    <div class="carte">
+      <div class="titre">Mise à jour</div>
+      <p style="margin:.4em 0 1em" id="etat-version">Version installée : —</p>
+      <button id="chercher-maj">Rechercher une mise à jour</button>
+    </div>
+  </section>
+
+  <footer class="pied">
+    <strong>KDL Facture</strong> émet et lit des factures Factur-X conformes EN&nbsp;16931.
+    La transmission se fait par votre plateforme agréée : ce logiciel ne transmet pas les
+    factures et ne fait pas l'e-reporting.<br>
+    Réforme française — réception obligatoire pour toutes les entreprises au 1<sup>er</sup> septembre 2026 ;
+    émission au 1<sup>er</sup> septembre 2027 pour les PME et TPE.
+  </footer>
+
+  <aside data-kdl-promo data-app="facture"></aside>
+</main>
+
+<div class="messages" id="messages" role="status" aria-live="polite"></div>
+
+<script src="./kdl-theme.js"></script>
+<script src="./kdl-promo.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

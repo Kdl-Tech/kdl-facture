@@ -186,6 +186,20 @@ function creerApi(db, options = {}) {
 
   api.post('/documents/:id/emettre', (req, res) => repondre(res, () => service.emettre(req.params.id)));
 
+  /**
+   * Annuler l'émission de la dernière facture d'une suite : elle redevient un
+   * brouillon et son numéro repart dans le compteur, sans laisser de trou.
+   */
+  api.post('/documents/:id/annuler-emission', (req, res) =>
+    repondre(res, () => service.annulerEmission(req.params.id)));
+
+  /** État de la numérotation : trous et doublons éventuels, par type et par année. */
+  api.get('/numerotation', (req, res) => repondre(res, () => {
+    const e = entrepriseCourante();
+    if (!e) return { continue: true, suites: [] };
+    return service.verifierNumerotation(e.id);
+  }));
+
   api.post('/documents/:id/paiements', (req, res) => repondre(res, () => service.encaisser(req.params.id, req.body)));
 
   api.post('/documents/:id/avoir', (req, res) => repondre(res, () => service.creerAvoir(req.params.id, req.body)));

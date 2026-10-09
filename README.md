@@ -39,6 +39,15 @@ l'émission seulement, empreinte SHA-256, correction par avoir uniquement. Un
 journal chaîné enregistre chaque acte — modifier une ligne casse la chaîne, et
 le logiciel le signale.
 
+**Une erreur d'émission se reprend, sans trou dans la suite.** Tant qu'une
+facture porte le dernier numéro attribué, qu'elle n'a rien encaissé et qu'aucun
+avoir ne la vise, l'émission s'annule : le document redevient un brouillon
+modifiable ou supprimable, et son numéro repart dans le compteur pour la
+prochaine facture. Au milieu de la suite, c'est refusé — renuméroter des
+factures déjà remises reviendrait à réécrire l'histoire ; l'avoir reste la voie.
+Un contrôle de numérotation liste trous et doublons éventuels, par type et par
+année.
+
 **Un contrôle de conformité** refuse d'émettre une facture qui serait rejetée
 chez le client, en disant précisément ce qui manque.
 
@@ -135,3 +144,6 @@ calcule vos factures ne devrait pas être une boîte noire.
 Les règles appliquées viennent des textes officiels, listés dans l'onglet
 **Références** du logiciel : impots.gouv.fr, Légifrance, service-public.fr,
 URSSAF. En cas de doute, la source officielle fait foi — pas ce logiciel.
+
+---
+

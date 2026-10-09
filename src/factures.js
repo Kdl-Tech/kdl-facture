@@ -314,11 +314,116 @@ class Service {
     const doc = this.db.prepare('SELECT * FROM documents WHERE id = ?').get(documentId);
     if (!doc) throw new ErreurMetier("Document introuvable.");
     if (doc.statut !== 'brouillon') {
-      throw new ErreurMetier("Un document émis ne se supprime pas. Établissez un avoir.");
+      throw new ErreurMetier(
+        `Un document émis ne se supprime pas : le numéro ${doc.numero} appartient à une suite `
+        + "continue qui doit rester sans trou. Deux issues correctes : annuler l'émission si "
+        + "c'est le dernier numéro attribué (le numéro repart alors dans le compteur), ou "
+        + "établir un avoir.");
     }
     this.db.prepare('DELETE FROM documents WHERE id = ?').run(documentId);
     this.tracer(doc.entreprise_id, null, 'suppression_brouillon', `document ${documentId}`);
     return { supprime: true };
+  }
+
+  /** Le rang d'un numéro dans sa suite : « F2026-0007 » → 7. */
+  rangDuNumero(numero) {
+    const m = /-(\d+)$/.exec(String(numero || ''));
+    return m ? Number(m[1]) : null;
+  }
+
+  /**
+   * Annulation d'émission : le seul cas où une facture émise peut disparaître
+   * sans laisser de trou. Elle doit porter le DERNIER numéro attribué de sa
+   * suite — le compteur recule d'un cran et le document redevient un brouillon
+   * modifiable ou supprimable.
+   *
+   * Au milieu de la suite, c'est impossible : renuméroter les factures
+   * suivantes reviendrait à réécrire des documents déjà remis à des clients et
+   * déjà comptabilisés. La correction passe alors par un avoir.
+   */
+  annulerEmission(documentId) {
+    const doc = this.db.prepare('SELECT * FROM documents WHERE id = ?').get(documentId);
+    if (!doc) throw new ErreurMetier("Document introuvable.");
+    if (doc.statut === 'brouillon') {
+      throw new ErreurMetier("Ce document est déjà un brouillon : il se supprime directement.");
+    }
+
+    const paiements = this.db.prepare('SELECT COUNT(*) AS n FROM paiements WHERE document_id = ?')
+      .get(documentId).n;
+    if (paiements > 0) {
+      throw new ErreurMetier(
+        `La facture ${doc.numero} a déjà reçu un encaissement. Une facture payée ne s'annule pas : `
+        + "établissez un avoir, puis remboursez si la somme n'était pas due.");
+    }
+
+    const avoirs = this.db.prepare('SELECT COUNT(*) AS n FROM documents WHERE document_lie_id = ?')
+      .get(documentId).n;
+    if (avoirs > 0) {
+      throw new ErreurMetier(
+        `Un avoir a déjà été établi sur la facture ${doc.numero} : la correction est faite, `
+        + "il n'y a plus rien à annuler.");
+    }
+
+    const rang = this.rangDuNumero(doc.numero);
+    const annee = Number(String(doc.numero).slice(1, 5)) || Number(doc.date_emission.slice(0, 4));
+    const compteur = this.db.prepare(
+      'SELECT dernier FROM compteurs WHERE entreprise_id = ? AND type = ? AND annee = ?')
+      .get(doc.entreprise_id, doc.type, annee);
+
+    if (!rang || !compteur || compteur.dernier !== rang) {
+      throw new ErreurMetier(
+        `${doc.numero} n'est pas le dernier numéro attribué : des factures ont été émises après elle. `
+        + "Les renuméroter reviendrait à modifier des documents déjà remis à leurs destinataires. "
+        + "Établissez un avoir : la facture reste, son effet est annulé.");
+    }
+
+    return this.db.transaction(() => {
+      this.db.prepare(`
+        UPDATE documents SET numero = NULL, statut = 'brouillon', empreinte = '', emis_le = NULL
+        WHERE id = ?
+      `).run(documentId);
+      this.db.prepare(
+        'UPDATE compteurs SET dernier = dernier - 1 WHERE entreprise_id = ? AND type = ? AND annee = ?')
+        .run(doc.entreprise_id, doc.type, annee);
+      // Le journal, lui, ne recule pas : l'annulation s'y ajoute et le numéro
+      // libéré reste lisible dans l'historique.
+      this.tracer(doc.entreprise_id, documentId, 'annulation_emission',
+        `${doc.type} ${doc.numero} remis en brouillon, numéro rendu au compteur`);
+      return this.document(documentId);
+    })();
+  }
+
+  /**
+   * Contrôle de la suite : elle doit aller de 1 au dernier numéro attribué,
+   * sans trou ni doublon, pour chaque type et chaque année.
+   */
+  verifierNumerotation(entrepriseId) {
+    const compteurs = this.db.prepare(
+      'SELECT type, annee, dernier FROM compteurs WHERE entreprise_id = ? ORDER BY annee, type')
+      .all(entrepriseId);
+    const suites = compteurs.map((c) => {
+      const numeros = this.db.prepare(`
+        SELECT numero FROM documents
+        WHERE entreprise_id = ? AND type = ? AND numero IS NOT NULL
+          AND CAST(substr(numero, 2, 4) AS INTEGER) = ?
+        ORDER BY numero
+      `).all(entrepriseId, c.type, c.annee);
+      const rangs = numeros.map((n) => this.rangDuNumero(n.numero)).filter((r) => r !== null);
+      const attendus = new Set(rangs);
+      const manquants = [];
+      for (let i = 1; i <= c.dernier; i += 1) if (!attendus.has(i)) manquants.push(i);
+      const doublons = rangs.filter((r, i) => rangs.indexOf(r) !== i);
+      return {
+        type: c.type,
+        annee: c.annee,
+        dernier: c.dernier,
+        emis: rangs.length,
+        manquants,
+        doublons,
+        continue: manquants.length === 0 && doublons.length === 0,
+      };
+    });
+    return { continue: suites.every((s) => s.continue), suites };
   }
 
   /**

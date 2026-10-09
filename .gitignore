@@ -6,3 +6,11 @@ data/
 *.db
 *.db-*
 src/licence-secret.js
+dist-pwa/
+licence-privee.json
+licence-publique.json
+
+# Documentation interne (non publiée)
+docs/*
+!docs/interface.png
+PROJECT_STATE.md

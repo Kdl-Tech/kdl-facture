@@ -37,6 +37,14 @@ and never summed line by line.
 issue, SHA-256 fingerprint, corrections by credit note only. A hash-chained audit
 log records every act — alter one row and the chain breaks, and the software says so.
 
+**An issuing mistake can be taken back, leaving no gap.** As long as an invoice
+carries the last number assigned, has collected nothing and is targeted by no
+credit note, the issue can be cancelled: the document returns to draft — editable
+or deletable — and its number goes back into the counter for the next invoice.
+In the middle of the sequence it is refused: renumbering invoices already handed
+to clients would mean rewriting history, and the credit note remains the way. A
+numbering check lists any gaps and duplicates, per type and per year.
+
 **A compliance check** refuses to issue an invoice that would be rejected on the
 client's side, and tells you exactly what is missing.
 
@@ -131,3 +139,6 @@ invoices should not be a black box.
 The rules applied come from official texts, listed in the **Références** tab
 inside the software: impots.gouv.fr, Légifrance, service-public.fr, URSSAF. When
 in doubt, the official source prevails — not this software.
+
+---
+

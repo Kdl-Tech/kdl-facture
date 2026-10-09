@@ -17,13 +17,13 @@ const { verifier, genererXML } = require('../src/facturx');
 const { centimes, calculerDocument } = require('../src/calculs');
 
 const ENTREPRISE = {
-  nom: 'KDL TECH', siren: '123456789', siret: '12345678900019',
-  tva_intra: 'FR12123456789', adresse: '1 rue des Palmiers',
+  nom: 'KDL TECH', siren: '123456782', siret: '12345678200019',
+  tva_intra: 'FR11123456782', adresse: '1 rue des Palmiers',
   code_postal: '75001', ville: 'Paris', pays: 'FR',
   iban: 'FR7630001007941234567890185', regime_tva: 'normal', territoire: 'metropole',
 };
 const CLIENT = {
-  type: 'entreprise', nom: 'Client SARL', siren: '987654321', siret: '98765432100014',
+  type: 'entreprise', nom: 'Client SARL', siren: '987654324', siret: '98765432400024',
   adresse: '5 rue du Port', code_postal: '75002', ville: 'Paris', pays: 'FR',
 };
 const DOCUMENT = {
@@ -140,12 +140,12 @@ function preparer() {
   const service = new Service(db);
   const ent = db.prepare(`
     INSERT INTO entreprises (nom, siren, siret, tva_intra, adresse, code_postal, ville, iban, regime_tva)
-    VALUES ('KDL TECH', '123456789', '12345678900019', 'FR12123456789',
+    VALUES ('KDL TECH', '123456782', '12345678200019', 'FR11123456782',
             '1 rue X', '75001', 'Paris', 'FR7630001007941234567890185', 'normal')
   `).run();
   const cli = db.prepare(`
     INSERT INTO clients (entreprise_id, type, nom, siren, siret, adresse, code_postal, ville)
-    VALUES (?, 'entreprise', 'Client SARL', '987654321', '98765432100014', '5 rue Y', '75002', 'Paris')
+    VALUES (?, 'entreprise', 'Client SARL', '987654324', '98765432400024', '5 rue Y', '75002', 'Paris')
   `).run(ent.lastInsertRowid);
   return { db, service, entrepriseId: ent.lastInsertRowid, clientId: cli.lastInsertRowid };
 }

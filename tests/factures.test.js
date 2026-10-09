@@ -12,13 +12,13 @@ function preparer() {
   // franchise est désormais le régime par défaut.
   const ent = db.prepare(`
     INSERT INTO entreprises (nom, siren, siret, tva_intra, adresse, code_postal, ville, iban, regime_tva)
-    VALUES ('KDL TECH', '123456789', '12345678900019', 'FR12123456789',
+    VALUES ('KDL TECH', '123456782', '12345678200019', 'FR11123456782',
             '1 rue des Palmiers', '97100', 'Basse-Terre',
             'FR7630001007941234567890185', 'normal')
   `).run();
   const cli = db.prepare(`
     INSERT INTO clients (entreprise_id, type, nom, siren, siret, adresse, code_postal, ville, delai_paiement_jours)
-    VALUES (?, 'entreprise', 'Boulangerie Le Fournil', '987654321', '98765432100014',
+    VALUES (?, 'entreprise', 'Boulangerie Le Fournil', '987654324', '98765432400024',
             '5 avenue du Port', '97110', 'Pointe-à-Pitre', 30)
   `).run(ent.lastInsertRowid);
   return { db, service, entrepriseId: ent.lastInsertRowid, clientId: cli.lastInsertRowid };

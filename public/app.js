@@ -752,12 +752,15 @@ async function dessinerFiche(c) {
     <button class="bouton" data-pdf="${d.id}">PDF Factur-X</button>
     <button class="bouton" data-xml="${d.id}">XML seul</button>
     ${c.reste_du > 0 ? `<button class="bouton primaire" data-encaisser="${d.id}" data-montant="${c.reste_du}">Encaisser</button>` : ''}
-    ${d.type === 'facture' ? `<button class="bouton danger" data-avoir="${d.id}">Avoir</button>` : ''}`;
+    ${d.statut === 'brouillon'
+      ? `<button class="bouton danger" data-supprimer-doc="${d.id}">Supprimer</button>`
+      : `${!c.paiements.length ? `<button class="bouton" data-devalider="${d.id}">Annuler l’émission</button>` : ''}
+         ${d.type === 'facture' ? `<button class="bouton danger" data-avoir="${d.id}">Avoir</button>` : ''}`}`;
 }
 
 /* ─── Actions globales ─── */
 document.addEventListener('click', async (ev) => {
-  const c = ev.target.closest('[data-vue],[data-action],[data-ouvrir],[data-pdf],[data-xml],[data-encaisser],[data-avoir],[data-client],[data-facturer],[data-suppr-ligne],[data-suppr-article],[data-filtre]');
+  const c = ev.target.closest('[data-vue],[data-action],[data-ouvrir],[data-pdf],[data-xml],[data-encaisser],[data-avoir],[data-devalider],[data-supprimer-doc],[data-client],[data-facturer],[data-suppr-ligne],[data-suppr-article],[data-filtre]');
   if (!c) return;
 
   try {
@@ -783,6 +786,23 @@ document.addEventListener('click', async (ev) => {
       if (saisi === null) return undefined;
       await api(`/documents/${c.dataset.encaisser}/paiements`, { method: 'POST', body: { montant: Number(saisi.replace(',', '.')) } });
       noter('Encaissement enregistré.', 'succes');
+      fermerTiroir();
+      return aller($('.onglet.actif').dataset.vue);
+    }
+
+    if (c.dataset.supprimerDoc) {
+      if (!confirm('Supprimer ce brouillon ? Il n’a pas encore de numéro : rien ne manquera dans la suite.')) return undefined;
+      await api(`/documents/${c.dataset.supprimerDoc}`, { method: 'DELETE' });
+      noter('Brouillon supprimé.', 'succes');
+      fermerTiroir();
+      return aller($('.onglet.actif').dataset.vue);
+    }
+
+    if (c.dataset.devalider) {
+      if (!confirm("Annuler l’émission ? La facture redevient un brouillon et son numéro repart dans le compteur, "
+        + "pour rester libre à la prochaine émission. Possible seulement sur le dernier numéro attribué.")) return undefined;
+      await api(`/documents/${c.dataset.devalider}/annuler-emission`, { method: 'POST' });
+      noter('Émission annulée : le document est redevenu un brouillon.', 'succes');
       fermerTiroir();
       return aller($('.onglet.actif').dataset.vue);
     }

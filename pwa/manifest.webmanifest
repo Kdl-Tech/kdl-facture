@@ -1,0 +1,43 @@
+{
+  "name": "KDL Facture — facturation électronique",
+  "short_name": "KDL Facture",
+  "description": "Recevoir et émettre des factures électroniques Factur-X conformes EN 16931, sur votre machine, sans compte et sans serveur.",
+  "lang": "fr-FR",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F3F7FA",
+  "theme_color": "#123C63",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    { "src": "./icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Recevoir une facture",
+      "short_name": "Recevoir",
+      "description": "Déposer une facture reçue d'un fournisseur",
+      "url": "./?vue=reception"
+    },
+    {
+      "name": "Nouvelle facture",
+      "short_name": "Émettre",
+      "description": "Établir une facture client",
+      "url": "./?vue=emission"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "./?vue=reception",
+      "accept": {
+        "application/pdf": [".pdf"],
+        "application/xml": [".xml"],
+        "text/xml": [".xml"]
+      }
+    }
+  ]
+}

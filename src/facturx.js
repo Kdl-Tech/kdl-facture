@@ -250,6 +250,44 @@ function uniteCEFACT(unite) {
 }
 
 /**
+ * La clé de contrôle du SIREN et du SIRET.
+ *
+ * Le contrôle de longueur ne voit pas le défaut le plus courant : deux chiffres
+ * inversés en recopiant un numéro tout neuf. Le numéro fait toujours ses 9 ou 14
+ * chiffres, part dans le XML, et c'est la plateforme du client qui rejette la
+ * facture — une fois qu'elle est émise, donc figée, donc réparable seulement par
+ * un avoir. Autant refuser la saisie.
+ *
+ * Exception connue : La Poste (SIREN 356000000). Ses établissements ne suivent
+ * pas Luhn ; leur validité tient à une somme de chiffres divisible par 5.
+ */
+function luhnValide(numero) {
+  const n = String(numero || '').replace(/\s/g, '');
+  if (!/^\d+$/.test(n)) return false;
+  if (n.startsWith('356000000')) {
+    return [...n].reduce((t, c) => t + Number(c), 0) % 5 === 0;
+  }
+  let total = 0;
+  for (let i = 0; i < n.length; i += 1) {
+    let chiffre = Number(n[n.length - 1 - i]);
+    // Un rang pair compté depuis la gauche est doublé. On lit le numéro à
+    // l'envers, d'où le calcul du rang réel à partir de la longueur.
+    if ((n.length - i) % 2 === 0) {
+      chiffre *= 2;
+      if (chiffre > 9) chiffre -= 9;
+    }
+    total += chiffre;
+  }
+  return total % 10 === 0;
+}
+
+/** Un numéro français seulement : un client étranger n'a ni SIREN ni SIRET. */
+function estFrancais(partie) {
+  const pays = String(partie.pays || 'FR').toUpperCase();
+  return pays === 'FR' || pays === '';
+}
+
+/**
  * Contrôle métier avant émission : ce qui bloquerait une facture chez le client.
  * Mieux vaut refuser d'émettre que d'envoyer une facture qui sera rejetée.
  */
@@ -257,13 +295,33 @@ function verifier({ document, entreprise, client, lignes }) {
   const anomalies = [];
   const exiger = (condition, message) => { if (!condition) anomalies.push(message); };
 
+  // Un devis n'est pas une facture électronique : la réforme (Factur-X, SIREN
+  // du client, TVA intracommunautaire...) ne s'applique qu'à l'émission d'une
+  // facture. Exiger ces mentions sur un devis bloquerait un simple chiffrage
+  // fait sur le pas de la porte, avant même de connaître l'adresse du client.
+  const estDevis = document.type === 'devis';
+
   exiger(entreprise.nom, "Le nom de votre entreprise est vide.");
-  exiger(/^\d{9}$/.test(String(entreprise.siren || '').replace(/\s/g, '')),
-    "Le SIREN de votre entreprise doit comporter 9 chiffres.");
-  exiger(entreprise.adresse && entreprise.ville, "L'adresse de votre entreprise est incomplète.");
+  if (!estDevis) {
+    const sirenEntreprise = String(entreprise.siren || '').replace(/\s/g, '');
+    exiger(/^\d{9}$/.test(sirenEntreprise),
+      "Le SIREN de votre entreprise doit comporter 9 chiffres.");
+    if (/^\d{9}$/.test(sirenEntreprise)) {
+      exiger(luhnValide(sirenEntreprise),
+        "Le SIREN de votre entreprise est invalide : sa clé de contrôle ne tombe pas juste. Vérifiez la saisie.");
+    }
+    const siretEntreprise = String(entreprise.siret || '').replace(/\s/g, '');
+    if (siretEntreprise) {
+      exiger(/^\d{14}$/.test(siretEntreprise) && luhnValide(siretEntreprise),
+        "Le SIRET de votre entreprise est invalide : 14 chiffres et une clé de contrôle juste sont exigés.");
+    }
+    exiger(entreprise.adresse && entreprise.ville, "L'adresse de votre entreprise est incomplète.");
+  }
   exiger(client.nom, "Le nom du client est vide.");
-  exiger(client.adresse && client.ville, "L'adresse du client est incomplète.");
-  exiger((lignes || []).length > 0, "La facture ne contient aucune ligne.");
+  if (!estDevis) {
+    exiger(client.adresse && client.ville, "L'adresse du client est incomplète.");
+  }
+  exiger((lignes || []).length > 0, estDevis ? "Le devis ne contient aucune ligne." : "La facture ne contient aucune ligne.");
   exiger(document.date_emission, "La date d'émission est absente.");
   // Une date au mauvais format traverse tout et ressort tronquée dans le XML :
   // « 2026/08/06 » devient « 2026/08/ », et la facture est rejetée à l'arrivée.
@@ -276,16 +334,31 @@ function verifier({ document, entreprise, client, lignes }) {
         `La ${champ.replace('date_', 'date d’').replace('_', ' ')} doit s'écrire AAAA-MM-JJ.`);
     }
   }
-  exiger(['biens', 'services', 'mixte'].includes(document.categorie),
-    "La catégorie d'opération doit être « biens », « services » ou « mixte ».");
+  if (!estDevis) {
+    exiger(['biens', 'services', 'mixte'].includes(document.categorie),
+      "La catégorie d'opération doit être « biens », « services » ou « mixte ».");
 
-  if (client.type === 'entreprise') {
-    exiger(/^\d{9}$/.test(String(client.siren || '').replace(/\s/g, '')) ||
-           /^\d{14}$/.test(String(client.siret || '').replace(/\s/g, '')),
-      "Un client professionnel doit avoir un SIREN ou un SIRET : la réforme l'exige pour l'acheminement.");
-  }
-  if (client.type === 'public') {
-    exiger(client.code_service, "Un client du secteur public exige un code service exécutant.");
+    if (client.type === 'entreprise') {
+      const sirenClient = String(client.siren || '').replace(/\s/g, '');
+      const siretClient = String(client.siret || '').replace(/\s/g, '');
+      exiger(/^\d{9}$/.test(sirenClient) || /^\d{14}$/.test(siretClient),
+        "Un client professionnel doit avoir un SIREN ou un SIRET : la réforme l'exige pour l'acheminement.");
+      // Un identifiant faux achemine la facture vers personne : le contrôle vaut
+      // pour le client comme pour soi, mais seulement sur un numéro français.
+      if (estFrancais(client)) {
+        if (/^\d{9}$/.test(sirenClient)) {
+          exiger(luhnValide(sirenClient),
+            `Le SIREN du client (${sirenClient}) est invalide : sa clé de contrôle ne tombe pas juste.`);
+        }
+        if (/^\d{14}$/.test(siretClient)) {
+          exiger(luhnValide(siretClient),
+            `Le SIRET du client (${siretClient}) est invalide : sa clé de contrôle ne tombe pas juste.`);
+        }
+      }
+    }
+    if (client.type === 'public') {
+      exiger(client.code_service, "Un client du secteur public exige un code service exécutant.");
+    }
   }
 
   // Un avoir porte des quantités négatives : c'est ainsi qu'il annule la
@@ -304,41 +377,43 @@ function verifier({ document, entreprise, client, lignes }) {
       `Ligne ${i + 1} : la remise doit être comprise entre 0 et 100 %.`);
   }
 
-  // Hors du régime normal, la facture ne peut porter aucune TVA : une catégorie
-  // « exonéré », « autoliquidation », « intracommunautaire » ou « exportation »
-  // accompagnée d'un taux non nul produit un XML contradictoire, rejeté par tout
-  // validateur, et un PDF qui affiche à la fois l'exonération et le montant.
-  const categorie = categorieTva(document, entreprise, client);
-  if (categorie !== 'S') {
-    const avecTaux = (lignes || []).filter((l) => Number(l.tva_taux) > 0);
-    exiger(avecTaux.length === 0,
-      `${motifExoneration(categorie, entreprise)} : aucune ligne ne peut porter de TVA.`);
-  } else {
-    // Une facture avec TVA doit porter le numéro de TVA du vendeur, et un
-    // virement doit indiquer où payer. Les deux sont exigés par la norme.
-    exiger(entreprise.tva_intra,
-      "Votre numéro de TVA intracommunautaire est obligatoire dès lors que vous facturez de la TVA.");
-    if (document.mode_paiement === 'virement') {
-      exiger(entreprise.iban, "Un paiement par virement exige votre IBAN sur la facture.");
+  if (!estDevis) {
+    // Hors du régime normal, la facture ne peut porter aucune TVA : une catégorie
+    // « exonéré », « autoliquidation », « intracommunautaire » ou « exportation »
+    // accompagnée d'un taux non nul produit un XML contradictoire, rejeté par tout
+    // validateur, et un PDF qui affiche à la fois l'exonération et le montant.
+    const categorie = categorieTva(document, entreprise, client);
+    if (categorie !== 'S') {
+      const avecTaux = (lignes || []).filter((l) => Number(l.tva_taux) > 0);
+      exiger(avecTaux.length === 0,
+        `${motifExoneration(categorie, entreprise)} : aucune ligne ne peut porter de TVA.`);
+    } else {
+      // Une facture avec TVA doit porter le numéro de TVA du vendeur, et un
+      // virement doit indiquer où payer. Les deux sont exigés par la norme.
+      exiger(entreprise.tva_intra,
+        "Votre numéro de TVA intracommunautaire est obligatoire dès lors que vous facturez de la TVA.");
+      if (document.mode_paiement === 'virement') {
+        exiger(entreprise.iban, "Un paiement par virement exige votre IBAN sur la facture.");
+      }
     }
-  }
 
-  if (entreprise.regime_tva === 'franchise') {
-    const avecTva = (lignes || []).some((l) => Number(l.tva_taux) > 0);
-    exiger(!avecTva, "Vous êtes en franchise de TVA : aucune ligne ne peut porter de TVA.");
-  }
+    if (entreprise.regime_tva === 'franchise') {
+      const avecTva = (lignes || []).some((l) => Number(l.tva_taux) > 0);
+      exiger(!avecTva, "Vous êtes en franchise de TVA : aucune ligne ne peut porter de TVA.");
+    }
 
-  const zone = territoire(entreprise);
-  if (!zone.tva) {
-    const avecTva = (lignes || []).some((l) => Number(l.tva_taux) > 0);
-    exiger(!avecTva, `La TVA n'est pas applicable en ${zone.nom} (article 294 du CGI) : aucune ligne ne peut en porter.`);
-  } else if (entreprise.regime_tva !== 'franchise') {
-    // Un taux hors barème du territoire est presque toujours une erreur de
-    // saisie — 20 % facturés depuis la Guadeloupe, par exemple.
-    for (const [i, l] of (lignes || []).entries()) {
-      const taux = Number(l.tva_taux);
-      exiger(taux === 0 || zone.taux.includes(taux),
-        `Ligne ${i + 1} : le taux de ${taux} % n'existe pas en ${zone.nom}. Taux applicables : ${zone.taux.join(' %, ')} %.`);
+    const zone = territoire(entreprise);
+    if (!zone.tva) {
+      const avecTva = (lignes || []).some((l) => Number(l.tva_taux) > 0);
+      exiger(!avecTva, `La TVA n'est pas applicable en ${zone.nom} (article 294 du CGI) : aucune ligne ne peut en porter.`);
+    } else if (entreprise.regime_tva !== 'franchise') {
+      // Un taux hors barème du territoire est presque toujours une erreur de
+      // saisie — 20 % facturés depuis la Guadeloupe, par exemple.
+      for (const [i, l] of (lignes || []).entries()) {
+        const taux = Number(l.tva_taux);
+        exiger(taux === 0 || zone.taux.includes(taux),
+          `Ligne ${i + 1} : le taux de ${taux} % n'existe pas en ${zone.nom}. Taux applicables : ${zone.taux.join(' %, ')} %.`);
+      }
     }
   }
 
@@ -346,6 +421,6 @@ function verifier({ document, entreprise, client, lignes }) {
 }
 
 module.exports = {
-  genererXML, verifier, categorieTva, motifExoneration, uniteCEFACT,
+  genererXML, verifier, categorieTva, motifExoneration, uniteCEFACT, luhnValide,
   PROFIL_EN16931, MOYENS_PAIEMENT, TYPES_DOCUMENT,
 };

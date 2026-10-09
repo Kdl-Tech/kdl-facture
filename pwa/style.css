@@ -1,0 +1,498 @@
+/*
+ * KDL Facture — habillage de la version installable.
+ *
+ * Parti pris : un outil de comptable, pas un tableau de bord de start-up. On
+ * regarde d'abord ce qui presse (les impayés, les factures douteuses), et le
+ * geste principal — déposer une facture reçue — occupe le centre de l'écran
+ * sans qu'on ait à le chercher.
+ *
+ * Charte « Lagon » commune à kdl-tech.fr et à toutes les apps KDL (kit
+ * kdl-theme.css chargé avant cette feuille). Les variables historiques de
+ * cette page (--marque, --fond, --surface…) sont conservées pour ne pas
+ * réécrire chaque règle plus bas ; elles sont ici mappées une bonne fois sur
+ * les jetons Lagon (--lagon, --ecume, --surf…). Thème clair par défaut, ne
+ * suit jamais `prefers-color-scheme` : seul `<html data-theme="dark">`
+ * bascule en sombre (bouton soleil/lune, kdl-theme.js).
+ */
+
+/* ---------- Thème clair : la référence ---------- */
+
+:root {
+  --marque: var(--lagon-fond);
+  --marque-vive: var(--lagon-vif, #14B8B4);
+
+  --fond: var(--ecume);
+  --surface: var(--surf);
+  --surface-2: color-mix(in srgb, var(--surf) 55%, var(--ecume) 45%);
+  --surface-3: color-mix(in srgb, var(--surf) 30%, var(--ecume) 70%);
+  --trait: var(--ligne);
+  --trait-fort: color-mix(in srgb, var(--ligne) 45%, var(--gris) 55%);
+
+  --texte-doux: var(--gris);
+  --sur-marque: #FFFFFF;
+
+  --survol: rgba(10, 116, 117, .07);
+  --ombre: 0 1px 2px rgba(18, 60, 99, .08), 0 10px 30px rgba(18, 60, 99, .14);
+  --voile: rgba(18, 60, 99, .42);
+
+  /* Bandeau du haut : reste sombre dans les deux thèmes (comme --nuit du kit). */
+  --entete-haut: #123C63;
+  --entete-bas: #085F60;
+  --entete-texte: #FFFFFF;
+  --entete-texte-doux: rgba(255, 255, 255, .74);
+
+  --alerte: var(--rouge);
+  --alerte-fond: var(--teinte-rouge);
+  --alerte-trait: color-mix(in srgb, var(--rouge) 40%, transparent);
+  --attention: var(--ambre);
+  --attention-fond: var(--teinte-soleil);
+  --attention-trait: color-mix(in srgb, var(--ambre) 40%, transparent);
+  --sûr: var(--vert);
+  --sûr-fond: color-mix(in srgb, var(--vert) 12%, var(--surf));
+  --sûr-trait: color-mix(in srgb, var(--vert) 40%, transparent);
+  --info-fond: var(--teinte-lagon);
+  --info-trait: color-mix(in srgb, var(--lagon) 40%, transparent);
+
+  --rayon: 12px;
+}
+
+/*
+ * Thème sombre : un seul bloc, déclenché uniquement par le choix explicite
+ * de la personne (attribut posé par kdl-theme.js), jamais par le système.
+ */
+:root[data-theme="dark"] {
+  --marque-vive: var(--lagon-fonce);
+
+  --surface-2: color-mix(in srgb, var(--surf) 55%, var(--ecume) 45%);
+  --surface-3: color-mix(in srgb, var(--surf) 30%, var(--ecume) 70%);
+  --trait-fort: color-mix(in srgb, var(--ligne) 45%, var(--gris) 55%);
+
+  --survol: rgba(60, 200, 194, .10);
+  --ombre: 0 1px 3px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .25);
+  --voile: rgba(0, 0, 0, .55);
+
+  --alerte-trait: color-mix(in srgb, var(--rouge) 45%, transparent);
+  --attention-trait: color-mix(in srgb, var(--ambre) 45%, transparent);
+  --sûr-fond: color-mix(in srgb, var(--vert) 16%, var(--surf));
+  --sûr-trait: color-mix(in srgb, var(--vert) 45%, transparent);
+  --info-trait: color-mix(in srgb, var(--lagon) 45%, transparent);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--texte);
+  font: 15px/1.55 var(--corps), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.entete h1, .barre-liste h2, .carte .titre, h1, h2, h3 { font-family: var(--titre), system-ui, sans-serif; }
+
+/* ---------- Ossature ---------- */
+
+.entete {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 22px;
+  background: linear-gradient(180deg, var(--entete-haut) 0%, var(--entete-bas) 100%);
+  color: var(--entete-texte);
+  border-bottom: 1px solid var(--trait);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.entete .kdl-logo img { width: 34px; height: 34px; border-radius: 8px; display: block; }
+.entete h1 { font-size: 17px; margin: 0; font-weight: 620; letter-spacing: -.01em; }
+.entete .version { color: var(--entete-texte-doux); font-size: 12px; margin-left: 2px; }
+.entete .espace { flex: 1; }
+
+.onglets { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.onglet {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--entete-texte-doux);
+  padding: 7px 15px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+
+.onglet:hover { background: rgba(255, 255, 255, .12); color: var(--entete-texte); }
+
+.onglet[aria-selected="true"] {
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+  border-color: rgba(255, 255, 255, .28);
+}
+
+/* Bascule de thème (kit KDL, kdl-theme.js) : bouton soleil/lune, adapté au
+   bandeau du haut qui reste sombre dans les deux thèmes. */
+.entete .kdl-theme-btn {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  background: transparent;
+  color: var(--entete-texte);
+}
+.entete .kdl-theme-btn:hover { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .4); color: #fff; }
+.entete .kdl-theme-btn:focus-visible { outline-color: var(--soleil); }
+.entete .kdl-theme-btn .lune { color: #FFD873; }
+
+main { max-width: 1180px; margin: 0 auto; padding: 24px 22px 80px; }
+
+/* ---------- Résumé ---------- */
+
+.resume {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(184px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.carte {
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon);
+  padding: 15px 17px;
+}
+
+.carte .titre {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--texte-doux);
+  margin-bottom: 7px;
+}
+
+.carte .chiffre { font-size: 27px; font-weight: 640; letter-spacing: -.02em; }
+.carte .montant { color: var(--texte-doux); font-size: 13px; margin-top: 3px; }
+.carte.presse { border-color: var(--alerte-trait); background: var(--alerte-fond); }
+.carte.presse .chiffre { color: var(--alerte); }
+.carte.douteux { border-color: var(--attention-trait); background: var(--attention-fond); }
+.carte.douteux .chiffre { color: var(--attention); }
+
+/* ---------- Dépôt de fichiers ---------- */
+
+.depot {
+  border: 2px dashed var(--trait-fort);
+  border-radius: 14px;
+  padding: 34px 24px;
+  text-align: center;
+  background: var(--surface);
+  transition: border-color .15s, background .15s;
+  cursor: pointer;
+  margin-bottom: 26px;
+}
+
+.depot:hover, .depot.survol {
+  border-color: var(--marque-vive);
+  background: var(--surface-2);
+}
+
+.depot .geste { font-size: 17px; font-weight: 560; margin-bottom: 5px; }
+.depot .detail { color: var(--texte-doux); font-size: 13.5px; }
+.depot input { display: none; }
+
+/* ---------- Liste ---------- */
+
+.barre-liste {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.barre-liste h2 { font-size: 15px; margin: 0; font-weight: 600; }
+.barre-liste .espace { flex: 1; }
+
+select, input[type="search"], input[type="text"], textarea {
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  color: var(--texte);
+  border-radius: 8px;
+  padding: 7px 11px;
+  font: inherit;
+  font-size: 14px;
+}
+
+input[type="search"] { min-width: 190px; }
+textarea { width: 100%; resize: vertical; min-height: 84px; }
+
+.tableau {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon);
+  overflow: hidden;
+}
+
+.tableau th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--texte-doux);
+  font-weight: 600;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--trait);
+}
+
+.tableau td { padding: 12px; border-bottom: 1px solid var(--trait); vertical-align: middle; }
+.tableau tbody tr:last-child td { border-bottom: none; }
+.tableau tbody tr { cursor: pointer; transition: background .12s; }
+.tableau tbody tr:hover { background: var(--survol); }
+.tableau .nombre { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tableau .principal { font-weight: 560; }
+.tableau .secondaire { color: var(--texte-doux); font-size: 13px; }
+
+.pastille {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 560;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.pastille.conforme { background: var(--sûr-fond); color: var(--sûr); border-color: var(--sûr-trait); }
+.pastille.avérifier { background: var(--attention-fond); color: var(--attention); border-color: var(--attention-trait); }
+.pastille.nonconforme { background: var(--alerte-fond); color: var(--alerte); border-color: var(--alerte-trait); }
+.pastille.statut { background: var(--info-fond); color: var(--marque-vive); border-color: var(--info-trait); }
+.pastille.retard { background: var(--alerte-fond); color: var(--alerte); border-color: var(--alerte-trait); }
+
+/* ---------- Vide ---------- */
+
+.vide {
+  text-align: center;
+  padding: 52px 20px;
+  color: var(--texte-doux);
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon);
+}
+
+.vide .grand { font-size: 17px; color: var(--texte); margin-bottom: 6px; font-weight: 560; }
+
+/* ---------- Tiroir de détail ---------- */
+
+.voile {
+  position: fixed;
+  inset: 0;
+  background: var(--voile);
+  backdrop-filter: blur(2px);
+  z-index: 40;
+}
+
+.tiroir {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 100%);
+  background: var(--surface);
+  border-left: 1px solid var(--trait);
+  box-shadow: var(--ombre);
+  z-index: 41;
+  overflow-y: auto;
+  padding: 22px 24px 40px;
+}
+
+.tiroir h2 { margin: 0 0 3px; font-size: 19px; }
+.tiroir .sous-titre { color: var(--texte-doux); margin-bottom: 18px; font-size: 14px; }
+.tiroir .fermer { position: absolute; top: 16px; right: 18px; }
+
+.bloc { border-top: 1px solid var(--trait); padding: 15px 0; }
+
+.bloc h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--texte-doux);
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.paire { display: flex; justify-content: space-between; gap: 16px; padding: 4px 0; font-size: 14px; }
+.paire dt { color: var(--texte-doux); }
+.paire dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+.paire.fort {
+  font-size: 16px;
+  font-weight: 620;
+  padding-top: 9px;
+  border-top: 1px solid var(--trait);
+  margin-top: 6px;
+}
+
+.paire .secondaire { color: var(--texte-doux); font-size: 13px; }
+
+.anomalie, .avertissement {
+  border-radius: 8px;
+  padding: 10px 13px;
+  margin-bottom: 8px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.anomalie { background: var(--alerte-fond); border-left: 3px solid var(--alerte); }
+.avertissement { background: var(--attention-fond); border-left: 3px solid var(--attention); }
+
+.suite { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+
+.chrono { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
+.chrono li { padding: 6px 0 6px 16px; border-left: 2px solid var(--trait); position: relative; }
+
+.chrono li::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 13px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--marque-vive);
+}
+
+.chrono .quand { color: var(--texte-doux); font-size: 12.5px; }
+.chrono .pourquoi { color: var(--texte-doux); font-style: italic; }
+
+/* ---------- Boutons ---------- */
+
+button {
+  font: inherit;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--trait);
+  background: var(--surface-2);
+  color: var(--texte);
+  padding: 8px 15px;
+  cursor: pointer;
+  transition: background .13s, border-color .13s;
+}
+
+button:hover { background: var(--surface-3); border-color: var(--trait-fort); }
+button.premier { background: var(--marque); border-color: var(--marque); color: var(--sur-marque); font-weight: 560; }
+button.premier:hover { background: var(--marque-vive); border-color: var(--marque-vive); }
+button.danger { border-color: var(--alerte-trait); color: var(--alerte); background: var(--alerte-fond); }
+button.danger:hover { background: var(--alerte-fond); border-color: var(--alerte); }
+button.discret { background: none; border-color: transparent; color: var(--texte-doux); }
+button.discret:hover { color: var(--texte); background: var(--survol); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+:focus-visible { outline: 2px solid var(--marque-vive); outline-offset: 2px; }
+
+/* ---------- Messages ---------- */
+
+.messages {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.message {
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-left: 3px solid var(--marque-vive);
+  border-radius: var(--rayon);
+  padding: 12px 17px;
+  box-shadow: var(--ombre);
+  max-width: 560px;
+  font-size: 14px;
+  animation: apparait .18s ease-out;
+}
+
+.message.erreur { border-left-color: var(--alerte); }
+.message.reussite { border-left-color: var(--sûr); }
+.message.attention { border-left-color: var(--attention); }
+
+@keyframes apparait { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.pied {
+  margin-top: 40px;
+  padding-top: 18px;
+  border-top: 1px solid var(--trait);
+  color: var(--texte-doux);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+@media (max-width: 700px) {
+  /*
+   * L'en-tête passe sur deux lignes : identité + bascule de thème en haut,
+   * onglets pleine largeur en dessous. Sans les `order`, le bouton de thème
+   * — réduit à sa seule pastille — se retrouvait seul sur une troisième ligne,
+   * où il n'avait l'air de rien.
+   */
+  .entete { flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
+  .entete .kdl-theme-btn { order: 1; }
+  .onglets { order: 2; flex: 1 1 100%; }
+  .onglet { flex: 1 1 30%; padding: 8px 6px; text-align: center; }
+  main { padding: 18px 14px 60px; }
+  .tableau .masquable { display: none; }
+  .tiroir { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* ---------- Formulaires d'émission ---------- */
+
+.grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px 14px;
+}
+
+.grille label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--texte-doux);
+}
+
+.grille label.large { grid-column: 1 / -1; }
+
+.grille input, .grille select {
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  color: var(--texte);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font: inherit;
+  font-size: 14px;
+  width: 100%;
+}
+
+.tableau input, .tableau select {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--texte);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 14px;
+  width: 100%;
+}
+
+.tableau input:hover, .tableau select:hover { border-color: var(--trait); }
+.tableau input:focus, .tableau select:focus { border-color: var(--marque-vive); background: var(--surface); }
+.tableau input.nombre { text-align: right; font-variant-numeric: tabular-nums; }

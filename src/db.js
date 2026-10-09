@@ -301,10 +301,61 @@ CREATE TABLE IF NOT EXISTS compteurs (
   PRIMARY KEY (entreprise_id, type, annee)
 );
 
+-- Les factures reçues des fournisseurs. Le fichier d'origine est conservé tel
+-- qu'il est arrivé : c'est lui qui fait foi en cas de contestation, pas notre
+-- relecture. Le XML est gardé à côté pour éviter de le ré-extraire à chaque
+-- affichage, et l'empreinte sert à reconnaître un envoi en double.
+CREATE TABLE IF NOT EXISTS factures_recues (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entreprise_id INTEGER NOT NULL REFERENCES entreprises(id) ON DELETE CASCADE,
+  recue_le TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  fichier_nom TEXT NOT NULL DEFAULT '',
+  fichier_type TEXT NOT NULL DEFAULT '',
+  format TEXT NOT NULL DEFAULT '',
+  empreinte_fichier TEXT NOT NULL DEFAULT '',
+  empreinte_xml TEXT NOT NULL DEFAULT '',
+  cle_metier TEXT NOT NULL DEFAULT '',
+  numero TEXT NOT NULL DEFAULT '',
+  type TEXT NOT NULL DEFAULT 'facture',
+  date_emission TEXT NOT NULL DEFAULT '',
+  date_echeance TEXT NOT NULL DEFAULT '',
+  fournisseur_nom TEXT NOT NULL DEFAULT '',
+  fournisseur_siret TEXT NOT NULL DEFAULT '',
+  fournisseur_siren TEXT NOT NULL DEFAULT '',
+  devise TEXT NOT NULL DEFAULT 'EUR',
+  total_ht REAL NOT NULL DEFAULT 0,
+  total_tva REAL NOT NULL DEFAULT 0,
+  total_ttc REAL NOT NULL DEFAULT 0,
+  net_a_payer REAL NOT NULL DEFAULT 0,
+  statut TEXT NOT NULL DEFAULT 'recue',
+  verdict TEXT NOT NULL DEFAULT '',
+  anomalies TEXT NOT NULL DEFAULT '',
+  avertissements TEXT NOT NULL DEFAULT '',
+  facture_json TEXT NOT NULL DEFAULT '',
+  xml TEXT NOT NULL DEFAULT '',
+  fichier BLOB,
+  note TEXT NOT NULL DEFAULT ''
+);
+
+-- Ce qui a été décidé de chaque facture reçue, et quand. Un rejet contesté se
+-- prouve par cette suite, pas par le statut courant.
+CREATE TABLE IF NOT EXISTS recues_historique (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  recue_id INTEGER NOT NULL REFERENCES factures_recues(id) ON DELETE CASCADE,
+  horodatage TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  statut TEXT NOT NULL,
+  motif TEXT NOT NULL DEFAULT '',
+  par TEXT NOT NULL DEFAULT ''
+);
+
 CREATE INDEX IF NOT EXISTS idx_documents_client ON documents(client_id);
 CREATE INDEX IF NOT EXISTS idx_documents_statut ON documents(entreprise_id, statut);
 CREATE INDEX IF NOT EXISTS idx_lignes_document ON lignes(document_id);
 CREATE INDEX IF NOT EXISTS idx_paiements_document ON paiements(document_id);
+CREATE INDEX IF NOT EXISTS idx_recues_entreprise ON factures_recues(entreprise_id, statut);
+CREATE INDEX IF NOT EXISTS idx_recues_empreinte ON factures_recues(empreinte_fichier);
+CREATE INDEX IF NOT EXISTS idx_recues_cle ON factures_recues(cle_metier);
+CREATE INDEX IF NOT EXISTS idx_recues_historique ON recues_historique(recue_id);
 `;
 
 module.exports = { ouvrir, creerSchema, migrer, cheminParDefaut, moteur };

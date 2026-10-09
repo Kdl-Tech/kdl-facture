@@ -2,18 +2,20 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { genererXML, verifier, categorieTva, uniteCEFACT } = require('../src/facturx');
+const {
+  genererXML, verifier, categorieTva, uniteCEFACT, luhnValide,
+} = require('../src/facturx');
 
 const ENTREPRISE = {
-  nom: 'KDL TECH', siren: '123456789', siret: '12345678900019',
-  tva_intra: 'FR12123456789', adresse: '1 rue des Palmiers',
+  nom: 'KDL TECH', siren: '123456782', siret: '12345678200019',
+  tva_intra: 'FR11123456782', adresse: '1 rue des Palmiers',
   code_postal: '97100', ville: 'Basse-Terre', pays: 'FR',
   email: 'contact@kdl-tech.fr', iban: 'FR7630001007941234567890185',
   regime_tva: 'normal',
 };
 const CLIENT = {
-  type: 'entreprise', nom: 'Boulangerie Le Fournil', siren: '987654321',
-  siret: '98765432100014', adresse: '5 avenue du Port',
+  type: 'entreprise', nom: 'Boulangerie Le Fournil', siren: '987654324',
+  siret: '98765432400024', adresse: '5 avenue du Port',
   code_postal: '97110', ville: 'Pointe-à-Pitre', pays: 'FR',
   email: 'contact@fournil.fr',
 };
@@ -131,4 +133,96 @@ test('une catégorie dopération invalide est refusée', () => {
     document: { ...DOCUMENT, categorie: 'autre' }, entreprise: ENTREPRISE, client: CLIENT, lignes: LIGNES,
   });
   assert.strictEqual(r.valide, false);
+});
+
+/**
+ * Un devis se chiffre parfois avant même de connaître l'adresse du client —
+ * sur le pas de la porte, avec juste un nom. La réforme Factur-X (SIREN,
+ * adresse, TVA intracommunautaire, IBAN...) ne s'applique qu'à la facture.
+ */
+test('un devis sans adresse ni SIREN, côté client comme entreprise, est accepté', () => {
+  const r = verifier({
+    document: { type: 'devis', numero: 'D2026-0001', date_emission: '2026-09-09' },
+    entreprise: { nom: 'KDL TECH', regime_tva: 'franchise' },
+    client: { nom: 'Jean Pierre' },
+    lignes: [{ designation: 'Configuration imprimante', quantite: 1, prix_ht: 49, tva_taux: 0 }],
+  });
+  assert.strictEqual(r.valide, true, r.anomalies.join(' / '));
+});
+
+test('un devis garde les contrôles de base : nom du client et au moins une ligne', () => {
+  const sansClient = verifier({
+    document: { type: 'devis', numero: 'D2026-0001', date_emission: '2026-09-09' },
+    entreprise: { nom: 'KDL TECH' }, client: { nom: '' }, lignes: LIGNES,
+  });
+  assert.strictEqual(sansClient.valide, false);
+  assert.ok(sansClient.anomalies.some((a) => a.includes('client')));
+
+  const sansLigne = verifier({
+    document: { type: 'devis', numero: 'D2026-0001', date_emission: '2026-09-09' },
+    entreprise: { nom: 'KDL TECH' }, client: { nom: 'Jean Pierre' }, lignes: [],
+  });
+  assert.strictEqual(sansLigne.valide, false);
+  assert.ok(sansLigne.anomalies.some((a) => a.includes('aucune ligne')));
+});
+
+/**
+ * La clé de contrôle attrape l'erreur que la longueur laisse passer : deux
+ * chiffres inversés en recopiant un numéro. Une facture émise étant figée, elle
+ * ne se répare que par un avoir — le contrôle doit donc bloquer avant.
+ */
+test('un SIREN dont la clé ne tombe pas juste est refusé', () => {
+  const r = verifier({
+    document: DOCUMENT, entreprise: { ...ENTREPRISE, siren: '123456789', siret: '' },
+    client: CLIENT, lignes: LIGNES,
+  });
+  assert.strictEqual(r.valide, false);
+  assert.ok(r.anomalies.some((a) => a.includes('clé de contrôle')), r.anomalies.join(' / '));
+});
+
+test('deux chiffres inversés dans le SIRET de lentreprise sont détectés', () => {
+  const r = verifier({
+    document: DOCUMENT, entreprise: { ...ENTREPRISE, siret: '12345678200091' },
+    client: CLIENT, lignes: LIGNES,
+  });
+  assert.strictEqual(r.valide, false);
+  assert.ok(r.anomalies.some((a) => a.includes('SIRET de votre entreprise')), r.anomalies.join(' / '));
+});
+
+test('un SIRET client faux bloque lémission et nomme le numéro en cause', () => {
+  const r = verifier({
+    document: DOCUMENT, entreprise: ENTREPRISE,
+    client: { ...CLIENT, siren: '', siret: '98765432400025' }, lignes: LIGNES,
+  });
+  assert.strictEqual(r.valide, false);
+  assert.ok(r.anomalies.some((a) => a.includes('98765432400025')), r.anomalies.join(' / '));
+});
+
+test('un client étranger nest pas soumis à la clé française', () => {
+  const r = verifier({
+    document: DOCUMENT, entreprise: ENTREPRISE,
+    client: {
+      ...CLIENT, pays: 'BE', tva_intra: 'BE0123456789',
+      siren: '123456789', siret: '',
+    },
+    lignes: LIGNES,
+  });
+  assert.ok(!r.anomalies.some((a) => a.includes('clé de contrôle')), r.anomalies.join(' / '));
+});
+
+/**
+ * Les établissements de La Poste (SIREN 356000000) échappent à Luhn : leur
+ * validité tient à une somme de chiffres divisible par 5. Le numéro ci-dessous
+ * est construit pour exercer la règle, ce n'est pas l'identifiant d'un
+ * établissement réel.
+ */
+test('la règle propre à La Poste est appliquée au lieu de Luhn', () => {
+  assert.strictEqual(luhnValide('35600000000042'), true, 'somme 20, multiple de 5');
+  assert.strictEqual(luhnValide('35600000000043'), false, 'somme 21, non multiple de 5');
+});
+
+test('la clé de contrôle rejette tout ce qui nest pas un nombre', () => {
+  assert.strictEqual(luhnValide(''), false);
+  assert.strictEqual(luhnValide('12345678A'), false);
+  assert.strictEqual(luhnValide(null), false);
 });

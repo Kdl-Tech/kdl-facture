@@ -18,13 +18,13 @@ const { verifier } = require('../src/facturx');
 
 const JEU = {
   entreprise: {
-    nom: 'KDL TECH', siren: '123456789', siret: '12345678900019',
+    nom: 'KDL TECH', siren: '123456782', siret: '12345678200019',
     adresse: '1 rue des Palmiers', code_postal: '97100', ville: 'Basse-Terre',
     pays: 'FR', regime_tva: 'franchise', territoire: 'guadeloupe',
     penalites_taux: 10, escompte: 'Aucun escompte.',
   },
   client: {
-    type: 'entreprise', nom: 'Client Pro', siren: '987654321', siret: '98765432100014',
+    type: 'entreprise', nom: 'Client Pro', siren: '987654324', siret: '98765432400024',
     adresse: '5 avenue du Port', code_postal: '97110', ville: 'Pointe-à-Pitre', pays: 'FR',
   },
   document: {
@@ -42,7 +42,11 @@ test('le PDF ne dépend d’aucun fichier de police externe', async () => {
   // aucune police standard ne doit plus être nommée dans le générateur.
   // On lit le code sans ses commentaires : le mot « Helvetica » y est expliqué,
   // ce qui n'est pas la même chose que l'appeler.
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'pdf.js'), 'utf-8')
+  // Le générateur tient maintenant en deux fichiers : l'orchestration propre au
+  // poste, et le dessin partagé avec la version installable. Les deux comptent.
+  const source = ['pdf.js', 'rendu-pdf.js']
+    .map((f) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf-8'))
+    .join('\n')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/.*$/gm, '');
   for (const standard of ['Helvetica', 'Times-Roman', 'Courier', 'Symbol', 'ZapfDingbats']) {
